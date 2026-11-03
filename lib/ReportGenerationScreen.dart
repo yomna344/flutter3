@@ -1,10 +1,7 @@
 import 'package:flutter/material.dart';
-
 import 'MealsAnalysisScreen.dart';
 import 'MedicationReportScreen.dart';
-import 'GrowthReportScreen.dart';
 import 'ActivityReportScreen.dart';
-import 'HealthAdviceReportScreen.dart';
 import 'ComprehensiveHealthReportScreen.dart';
 import 'MedicalExamsReportScreen.dart';
 import 'GlucoseReportScreen.dart';
@@ -47,13 +44,8 @@ class _ReportGenerationScreenState
 
   final List<String> reportTypes = const [
     'التقرير الصحي الشامل',
-    'تقرير الأدوية',
-    'تقرير النمو',
     'تقرير النشاط',
-    'النصائح الصحية',
-    'تقرير قراءات السكر',
     'تقرير الفحوصات الطبية',
-    'تحليل الوجبات',
   ];
 
   @override
@@ -255,29 +247,6 @@ class _ReportGenerationScreenState
         );
         break;
 
-      case 'تحليل الوجبات':
-        reportScreen = MealsAnalysisScreen(
-          childName: widget.childName,
-          startDate: reportStartDate,
-          endDate: reportEndDate,
-        );
-        break;
-
-      case 'تقرير الأدوية':
-        reportScreen = MedicationReportScreen(
-          childName: widget.childName,
-          startDate: reportStartDate,
-          endDate: reportEndDate,
-        );
-        break;
-
-      case 'تقرير النمو':
-        reportScreen = GrowthReportScreen(
-          childName: widget.childName,
-          startDate: reportStartDate,
-          endDate: reportEndDate,
-        );
-        break;
 
       case 'تقرير النشاط':
         reportScreen = ActivityReportScreen(
@@ -287,24 +256,9 @@ class _ReportGenerationScreenState
         );
         break;
 
-      case 'النصائح الصحية':
-        reportScreen = HealthAdviceReportScreen(
-          childName: widget.childName,
-          startDate: reportStartDate,
-          endDate: reportEndDate,
-        );
-        break;
 
       case 'تقرير الفحوصات الطبية':
         reportScreen = MedicalExamsReportScreen(
-          childName: widget.childName,
-          startDate: reportStartDate,
-          endDate: reportEndDate,
-        );
-        break;
-
-      case 'تقرير قراءات السكر':
-        reportScreen = GlucoseReportScreen(
           childName: widget.childName,
           startDate: reportStartDate,
           endDate: reportEndDate,
@@ -607,7 +561,7 @@ class _ReportGenerationScreenState
                                     menuChildren: [
                                       SizedBox(
                                         width: menuWidth,
-                                        height: 250,
+                                        height: reportTypes.length * 48.0 + 8,
                                         child: Stack(
                                           children: [
                                             Scrollbar(
@@ -622,10 +576,8 @@ class _ReportGenerationScreenState
                                                 _reportScrollController,
                                                 physics:
                                                 const ClampingScrollPhysics(),
-                                                padding:
-                                                const EdgeInsets.only(
-                                                  top: 4,
-                                                  bottom: 30,
+                                                padding: const EdgeInsets.symmetric(
+                                                  vertical: 4,
                                                 ),
                                                 itemCount:
                                                 reportTypes.length,
@@ -716,7 +668,7 @@ class _ReportGenerationScreenState
                                                   ),
                                                   child:
 
-                                                      const SizedBox
+                                                  const SizedBox
                                                       .shrink(),
                                                 ),
                                               ),

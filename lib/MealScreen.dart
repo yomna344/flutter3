@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'validators.dart';
 
 class MealScreen extends StatefulWidget {
   final String childName;
@@ -7,1361 +6,1452 @@ class MealScreen extends StatefulWidget {
   final String gender;
   final String? childImagePath;
 
+  // عند فتح الشاشة من قراءة السكر نرجع الوجبة الجديدة.
+  final bool returnMealOnSave;
+
   const MealScreen({
     super.key,
     required this.childName,
     required this.birthDate,
     required this.gender,
     this.childImagePath,
+    this.returnMealOnSave = false,
   });
 
   @override
   State<MealScreen> createState() => _MealScreenState();
 }
 
+class _MealEntry {
+  final String type;
+  final Map<String, List<String>> foods;
+  final DateTime dateTime;
+  final String? notes;
+
+  const _MealEntry({
+    required this.type,
+    required this.foods,
+    required this.dateTime,
+    this.notes,
+  });
+
+  String get summary =>
+      foods.values.expand((items) => items).join('، ');
+}
+
 class _MealScreenState extends State<MealScreen> {
-  GlobalKey<FormState> formKey = GlobalKey<FormState>();
+  final _notesController = TextEditingController();
+  final _typeKey = GlobalKey();
 
-  String? selectedMealType;
-  String? selectedMealName;
-  String? selectedPortionSize;
+  static const mealTypes = [
+    'الإفطار',
+    'الغداء',
+    'العشاء',
+    'وجبة خفيفة',
+  ];
 
-  DateTime? mealDate;
-  TimeOfDay? mealTime;
+  static const Map<String, List<String>> foodGroups = {
+    'النشويات والكربوهيدرات': [
+      'أرز',
+      'خبز',
+      'بطاطس',
+      'معكرونة',
+    ],
+    'البروتينات': [
+      'دجاج',
+      'سمك',
+      'لحم',
+      'بيض',
+      'بقوليات',
+    ],
+    'الخضروات': [
+      'خيار',
+      'طماطم',
+      'جزر',
+      'سلطة',
+    ],
+    'الفواكه': [
+      'تفاح',
+      'موز',
+      'برتقال',
+    ],
+    'الحليب ومشتقاته': [
+      'حليب',
+      'زبادي',
+      'جبن',
+    ],
+    'الدهون الصحية': [
+      'زيت الزيتون',
+      'أفوكادو',
+      'مكسرات',
+    ],
+  };
 
-  final TextEditingController customMealNameController =
-  TextEditingController();
+  final Map<String, Set<String>> _selectedFoods = {};
+  final Map<String, List<String>> _customFoods = {};
+  final List<_MealEntry> _sessionMeals = [];
 
-  final TextEditingController notesController =
-  TextEditingController();
+  String? _mealType;
+  DateTime? _mealDate;
+  TimeOfDay? _mealTime;
 
-  final TextEditingController ingredientsController =
-  TextEditingController();
+  String? _typeError;
+  String? _foodError;
+  String? _dateError;
+  String? _timeError;
 
-  final FocusNode customMealNameFocusNode = FocusNode();
+  bool _showNotes = false;
+  bool _showMeals = false;
+  int? _editingIndex;
 
-  bool isOtherMealName = false;
-  bool isSaving = false;
-
-  String? mealDateError;
-  String? mealTimeError;
-
-  DateTime dateOnly(DateTime date) {
-    return DateTime(date.year, date.month, date.day);
+  Color _border(ThemeData theme) {
+    return theme.brightness == Brightness.dark
+        ? theme.colorScheme.onSurface.withOpacity(0.18)
+        : const Color(0xffD7E7E7);
   }
 
-  bool isToday(DateTime date) {
-    return dateOnly(date) == dateOnly(DateTime.now());
-  }
+  DateTime _dateOnly(DateTime date) =>
+      DateTime(date.year, date.month, date.day);
 
-  bool isFutureTimeToday() {
-    if (mealDate == null ||
-        mealTime == null ||
-        !isToday(mealDate!)) {
-      return false;
-    }
-
-    final DateTime now = DateTime.now();
-
-    final DateTime selectedDateTime = DateTime(
-      now.year,
-      now.month,
-      now.day,
-      mealTime!.hour,
-      mealTime!.minute,
-    );
-
-    return selectedDateTime.isAfter(now);
-  }
-
-  String formatDate(DateTime? date) {
-    if (date == null) {
-      return '';
-    }
-
-    final String day =
-    date.day.toString().padLeft(2, '0');
-
-    final String month =
-    date.month.toString().padLeft(2, '0');
-
+  String _dateText(DateTime date) {
+    final day = date.day.toString().padLeft(2, '0');
+    final month = date.month.toString().padLeft(2, '0');
     return '$day/$month/${date.year}';
   }
 
-  String formatApiDate(DateTime date) {
-    final String month =
-    date.month.toString().padLeft(2, '0');
+  String _timeText(TimeOfDay time) {
+    final hour =
+    time.hourOfPeriod == 0 ? 12 : time.hourOfPeriod;
+    final minute = time.minute.toString().padLeft(2, '0');
+    final period =
+    time.period == DayPeriod.am ? 'ص' : 'م';
+    return '$hour:$minute $period';
+  }
 
-    final String day =
-    date.day.toString().padLeft(2, '0');
+  bool _isFuture() {
+    if (_mealDate == null || _mealTime == null) {
+      return false;
+    }
+
+    final date = _mealDate!;
+
+    return DateTime(
+      date.year,
+      date.month,
+      date.day,
+      _mealTime!.hour,
+      _mealTime!.minute,
+    ).isAfter(DateTime.now());
+  }
+
+  Map<String, List<String>> _chosenFoods() {
+    final result = <String, List<String>>{};
+
+    for (final group in foodGroups.keys) {
+      final foods = <String>[
+        ...?_selectedFoods[group],
+        ...?_customFoods[group],
+      ];
+
+      if (foods.isNotEmpty) {
+        result[group] = foods;
+      }
+    }
+
+    return result;
+  }
+
+  List<String> get _foodNames =>
+      _chosenFoods().values.expand((foods) => foods).toList();
+
+  String _formatApiDate(DateTime date) {
+    final month = date.month.toString().padLeft(2, '0');
+    final day = date.day.toString().padLeft(2, '0');
 
     return '${date.year}-$month-$day';
   }
 
-  String formatTime(TimeOfDay? time) {
-    if (time == null) {
-      return '';
-    }
-
-    final int hour =
-    time.hourOfPeriod == 0 ? 12 : time.hourOfPeriod;
-
-    final String minute =
-    time.minute.toString().padLeft(2, '0');
-
-    final String period =
-    time.period == DayPeriod.am ? 'ص' : 'م';
-
-    return '$hour:$minute $period';
-  }
-
-  String formatApiTime(TimeOfDay time) {
-    final String hour =
-    time.hour.toString().padLeft(2, '0');
-
-    final String minute =
-    time.minute.toString().padLeft(2, '0');
+  String _formatApiTime(DateTime date) {
+    final hour = date.hour.toString().padLeft(2, '0');
+    final minute = date.minute.toString().padLeft(2, '0');
 
     return '$hour:$minute:00';
   }
 
-  Future<void> selectMealDate() async {
-    final DateTime today = dateOnly(DateTime.now());
+  void _message(String message) {
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text(
+            message,
+            textAlign: TextAlign.center,
+          ),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+  }
 
-    final DateTime childBirthDate =
-    dateOnly(widget.birthDate);
+  Future<void> _chooseMealType() async {
+    final box = _typeKey.currentContext
+        ?.findRenderObject() as RenderBox?;
 
-    DateTime initialDate = mealDate ?? today;
+    final overlay = Overlay.of(context)
+        .context
+        .findRenderObject() as RenderBox?;
 
-    if (initialDate.isBefore(childBirthDate)) {
-      initialDate = childBirthDate;
-    }
+    if (box == null || overlay == null) return;
 
-    if (initialDate.isAfter(today)) {
-      initialDate = today;
-    }
+    final offset = box.localToGlobal(
+      Offset.zero,
+      ancestor: overlay,
+    );
 
-    final DateTime? selectedDate =
-    await showDatePicker(
+    final rect = Rect.fromLTWH(
+      offset.dx,
+      offset.dy + box.size.height + 4,
+      box.size.width,
+      0,
+    );
+
+    final selected = await showMenu<String>(
       context: context,
-      initialDate: initialDate,
-      firstDate: childBirthDate,
+      position: RelativeRect.fromRect(
+        rect,
+        Offset.zero & overlay.size,
+      ),
+      constraints: BoxConstraints(
+        minWidth: box.size.width,
+        maxWidth: box.size.width,
+      ),
+      items: mealTypes.map((type) {
+        return PopupMenuItem<String>(
+          value: type,
+          height: 46,
+          child: Align(
+            alignment: Alignment.centerRight,
+            child: Text(type),
+          ),
+        );
+      }).toList(),
+    );
+
+    if (!mounted || selected == null) return;
+
+    setState(() {
+      _mealType = selected;
+      _typeError = null;
+    });
+  }
+
+  Future<void> _pickDate() async {
+    final today = _dateOnly(DateTime.now());
+    final birth = _dateOnly(widget.birthDate);
+
+    if (birth.isAfter(today)) {
+      _message('تاريخ ميلاد الطفل غير صحيح');
+      return;
+    }
+
+    var initial = _mealDate ?? today;
+
+    if (initial.isBefore(birth)) initial = birth;
+    if (initial.isAfter(today)) initial = today;
+
+    final chosen = await showDatePicker(
+      context: context,
+      initialDate: initial,
+      firstDate: birth,
       lastDate: today,
       helpText: 'اختيار تاريخ الوجبة',
       cancelText: 'إلغاء',
       confirmText: 'اختيار',
     );
 
-    if (selectedDate == null) {
-      return;
-    }
+    if (!mounted || chosen == null) return;
 
     setState(() {
-      mealDate = selectedDate;
-      mealDateError = null;
-
-      if (mealTime != null &&
-          isFutureTimeToday()) {
-        mealTime = null;
-        mealTimeError = null;
-      }
+      _mealDate = chosen;
+      _dateError = null;
+      _timeError = _isFuture()
+          ? 'لا يمكن اختيار وقت مستقبلي'
+          : null;
     });
   }
 
-  Future<void> selectMealTime() async {
-    final TimeOfDay? selectedTime =
-    await showTimePicker(
+  Future<void> _pickTime() async {
+    final chosen = await showTimePicker(
       context: context,
-      initialTime: mealTime ?? TimeOfDay.now(),
+      initialTime: _mealTime ?? TimeOfDay.now(),
       helpText: 'اختيار وقت الوجبة',
       cancelText: 'إلغاء',
       confirmText: 'اختيار',
     );
 
-    if (selectedTime == null) {
-      return;
-    }
+    if (!mounted || chosen == null) return;
 
     setState(() {
-      mealTime = selectedTime;
-
-      if (mealDate != null &&
-          isFutureTimeToday()) {
-        mealTimeError =
-        'لا يمكن اختيار وقت مستقبلي';
-      } else {
-        mealTimeError = null;
-      }
+      _mealTime = chosen;
+      _timeError = _isFuture()
+          ? 'لا يمكن اختيار وقت مستقبلي'
+          : null;
     });
   }
 
-  void selectOtherMealName() {
-    setState(() {
-      selectedMealName = null;
-      isOtherMealName = true;
-      customMealNameController.clear();
-    });
+  Future<void> _openFoodPicker() async {
+    final draftSelected = <String, Set<String>>{
+      for (final group in foodGroups.keys)
+        group: {...?_selectedFoods[group]},
+    };
 
-    WidgetsBinding.instance
-        .addPostFrameCallback((_) {
-      if (mounted) {
-        customMealNameFocusNode.requestFocus();
-      }
-    });
-  }
+    final draftCustom = <String, List<String>>{
+      for (final group in foodGroups.keys)
+        group: [...?_customFoods[group]],
+    };
 
-  void returnToMealOptions() {
-    FocusScope.of(context).unfocus();
+    final otherController = TextEditingController();
 
-    setState(() {
-      selectedMealName = null;
-      isOtherMealName = false;
-      customMealNameController.clear();
-    });
-  }
+    String? activeGroup;
+    String? otherError;
 
-  String get finalMealName {
-    if (isOtherMealName) {
-      return customMealNameController.text.trim();
-    }
-
-    return selectedMealName ?? '';
-  }
-
-  bool validateDateAndTime() {
-    setState(() {
-      mealDateError =
-      mealDate == null ? 'مطلوب' : null;
-
-      if (mealTime == null) {
-        mealTimeError = 'مطلوب';
-      } else if (isFutureTimeToday()) {
-        mealTimeError =
-        'لا يمكن اختيار وقت مستقبلي';
-      } else {
-        mealTimeError = null;
-      }
-    });
-
-    return mealDateError == null &&
-        mealTimeError == null;
-  }
-
-  Future<void> saveMeal() async {
-    if (isSaving) {
-      return;
-    }
-
-    FocusScope.of(context).unfocus();
-
-    final bool formIsValid =
-        formKey.currentState?.validate() ?? false;
-
-    final bool dateAndTimeValid =
-    validateDateAndTime();
-
-    if (!formIsValid || !dateAndTimeValid) {
-      return;
-    }
-
-    setState(() {
-      isSaving = true;
-    });
-
-    final String notes =
-    notesController.text.trim();
-
-    /*
-      مستقبلًا عند ربط Laravel:
-
-      POST /api/children/{childId}/meals
-
-      Authorization: Bearer TOKEN
-
-      {
-        "meal_type": selectedMealType,
-        "meal_name": finalMealName,
-        "ingredients": ingredientsController.text.trim(),
-        "portion_size": selectedPortionSize,
-        "meal_date": formatApiDate(mealDate!),
-        "meal_time": formatApiTime(mealTime!),
-        "notes": notes.isEmpty ? null : notes
-      }
-    */
-
-    debugPrint('Meal type: $selectedMealType');
-    debugPrint('Meal name: $finalMealName');
-
-    debugPrint(
-      'Ingredients: ${ingredientsController.text.trim()}',
-    );
-
-    debugPrint('Portion: $selectedPortionSize');
-
-    debugPrint(
-      'Date: ${formatApiDate(mealDate!)}',
-    );
-
-    debugPrint(
-      'Time: ${formatApiTime(mealTime!)}',
-    );
-
-    debugPrint(
-      'Notes: ${notes.isEmpty ? 'none' : notes}',
-    );
-
-    await Future.delayed(
-      const Duration(seconds: 2),
-    );
-
-    if (!mounted) {
-      return;
-    }
-
-    ingredientsController.clear();
-    notesController.clear();
-    customMealNameController.clear();
-
-    setState(() {
-      isSaving = false;
-
-      selectedMealType = null;
-      selectedMealName = null;
-      selectedPortionSize = null;
-
-      isOtherMealName = false;
-
-      mealDate = null;
-      mealTime = null;
-
-      mealDateError = null;
-      mealTimeError = null;
-
-      formKey = GlobalKey<FormState>();
-    });
-
-    ScaffoldMessenger.of(context)
-        .hideCurrentSnackBar();
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text(
-          'تم حفظ الوجبة بنجاح',
-          textAlign: TextAlign.center,
+    final confirmed = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      backgroundColor: Theme.of(context).cardColor,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(
+          top: Radius.circular(22),
         ),
-        behavior: SnackBarBehavior.floating,
-        duration: Duration(seconds: 2),
+      ),
+      builder: (sheetContext) {
+        return StatefulBuilder(
+          builder: (sheetContext, updateSheet) {
+            final theme = Theme.of(sheetContext);
+            final primary = theme.primaryColor;
+            final dark = theme.colorScheme.onSurface;
+            final border = _border(theme);
+
+            final chosen = <String>[];
+
+            for (final group in foodGroups.keys) {
+              chosen.addAll(draftSelected[group]!);
+              chosen.addAll(draftCustom[group]!);
+            }
+
+            void addOther() {
+              final group = activeGroup;
+
+              if (group == null) {
+                updateSheet(() {
+                  otherError = 'اختاري المجموعة الغذائية أولًا';
+                });
+                return;
+              }
+
+              final value = otherController.text.trim();
+
+              if (value.isEmpty) {
+                updateSheet(() {
+                  otherError = 'اكتبي اسم الطعام أولًا';
+                });
+                return;
+              }
+
+              if (value.length > 50) {
+                updateSheet(() {
+                  otherError = 'الحد الأقصى 50 حرفًا';
+                });
+                return;
+              }
+
+              if (foodGroups[group]!.contains(value) ||
+                  draftCustom[group]!.contains(value)) {
+                updateSheet(() {
+                  otherError = 'هذا الطعام موجود مسبقًا';
+                });
+                return;
+              }
+
+              updateSheet(() {
+                draftCustom[group]!.add(value);
+                otherController.clear();
+                otherError = null;
+              });
+            }
+
+            void removeFood(String group, String food) {
+              updateSheet(() {
+                draftSelected[group]!.remove(food);
+                draftCustom[group]!.remove(food);
+              });
+            }
+
+            return Directionality(
+              textDirection: TextDirection.rtl,
+              child: Padding(
+                padding: EdgeInsets.only(
+                  bottom: MediaQuery.of(sheetContext)
+                      .viewInsets.bottom,
+                ),
+                child: FractionallySizedBox(
+                  heightFactor: 0.80,
+                  child: Column(
+                    children: [
+                      const SizedBox(height: 10),
+                      Container(
+                        width: 40,
+                        height: 4,
+                        decoration: BoxDecoration(
+                          color: border,
+                          borderRadius: BorderRadius.circular(5),
+                        ),
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(
+                          16, 10, 16, 8,
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(
+                              Icons.layers_outlined,
+                              color: primary,
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                'اختيار الأطعمة',
+                                style: TextStyle(
+                                  color: dark,
+                                  fontSize: 17,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                            IconButton(
+                              onPressed: () =>
+                                  Navigator.pop(sheetContext, false),
+                              icon: const Icon(Icons.close),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const Divider(height: 1),
+                      Expanded(
+                        child: ListView(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 12,
+                          ),
+                          children: [
+                            Text(
+                              'المجموعة الغذائية',
+                              textAlign: TextAlign.right,
+                              style: TextStyle(
+                                color: dark,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            DropdownButtonFormField<String>(
+                              key: ValueKey(activeGroup),
+                              value: activeGroup,
+                              isExpanded: true,
+                              dropdownColor: theme.cardColor,
+                              alignment:
+                              AlignmentDirectional.centerStart,
+                              decoration: _decoration(
+                                'اختاري المجموعة الغذائية',
+                                Icons.category_outlined,
+                                primary,
+                                border,
+                                theme.cardColor,
+                              ),
+                              hint: Align(
+                                alignment: Alignment.centerRight,
+                                child: Text(
+                                  'اختاري المجموعة الغذائية',
+                                  textAlign: TextAlign.right,
+                                  style: TextStyle(
+                                    color: dark.withOpacity(0.55),
+                                    fontSize: 13,
+                                  ),
+                                ),
+                              ),
+                              items: foodGroups.keys.map((group) {
+                                return DropdownMenuItem<String>(
+                                  value: group,
+                                  child: Align(
+                                    alignment: Alignment.centerRight,
+                                    child: Text(
+                                      group,
+                                      textAlign: TextAlign.right,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                );
+                              }).toList(),
+                              onChanged: (group) {
+                                if (group == null) return;
+
+                                updateSheet(() {
+                                  activeGroup = group;
+                                  otherController.clear();
+                                  otherError = null;
+                                });
+                              },
+                            ),
+                            const SizedBox(height: 16),
+                            if (activeGroup == null)
+                              Container(
+                                width: double.infinity,
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 14,
+                                  vertical: 18,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: primary.withOpacity(0.045),
+                                  borderRadius:
+                                  BorderRadius.circular(12),
+                                  border: Border.all(color: border),
+                                ),
+                                child: Column(
+                                  children: [
+                                    Icon(
+                                      Icons.touch_app_outlined,
+                                      color: primary,
+                                      size: 27,
+                                    ),
+                                    const SizedBox(height: 8),
+                                    Text(
+                                      'اختاري مجموعة غذائية لعرض الأطعمة المتاحة',
+                                      textAlign: TextAlign.center,
+                                      style: TextStyle(
+                                        color: dark.withOpacity(0.7),
+                                        fontSize: 13,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              )
+                            else ...[
+                              Text(
+                                'الأطعمة المتاحة',
+                                textAlign: TextAlign.right,
+                                style: TextStyle(
+                                  color: dark,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              Wrap(
+                                spacing: 8,
+                                runSpacing: 5,
+                                children:
+                                foodGroups[activeGroup]!.map((food) {
+                                  final selected =
+                                  draftSelected[activeGroup]!
+                                      .contains(food);
+
+                                  return FilterChip(
+                                    label: Text(food),
+                                    selected: selected,
+                                    selectedColor:
+                                    primary.withOpacity(0.16),
+                                    checkmarkColor: primary,
+                                    onSelected: (value) {
+                                      updateSheet(() {
+                                        if (value) {
+                                          draftSelected[activeGroup]!
+                                              .add(food);
+                                        } else {
+                                          draftSelected[activeGroup]!
+                                              .remove(food);
+                                        }
+                                      });
+                                    },
+                                  );
+                                }).toList(),
+                              ),
+                              const SizedBox(height: 15),
+                              Text(
+                                'أخرى',
+                                textAlign: TextAlign.right,
+                                style: TextStyle(
+                                  color: dark,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                              const SizedBox(height: 6),
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: TextField(
+                                      controller: otherController,
+                                      maxLength: 50,
+                                      textAlign: TextAlign.right,
+                                      decoration: _decoration(
+                                        'اسم طعام غير موجود',
+                                        Icons.add,
+                                        primary,
+                                        border,
+                                        theme.cardColor,
+                                      ).copyWith(counterText: ''),
+                                      onSubmitted: (_) => addOther(),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  IconButton.filledTonal(
+                                    onPressed: addOther,
+                                    tooltip: 'إضافة الطعام',
+                                    icon: const Icon(Icons.add),
+                                  ),
+                                ],
+                              ),
+                              if (otherError != null)
+                                Padding(
+                                  padding: const EdgeInsets.only(top: 4),
+                                  child: Text(
+                                    otherError!,
+                                    style: const TextStyle(
+                                      color: Colors.red,
+                                      fontSize: 12,
+                                    ),
+                                  ),
+                                ),
+                            ],
+                            const SizedBox(height: 20),
+                            Row(
+                              children: [
+                                Icon(
+                                  Icons.check_circle_outline,
+                                  color: primary,
+                                  size: 20,
+                                ),
+                                const SizedBox(width: 7),
+                                Expanded(
+                                  child: Text(
+                                    'الأطعمة المختارة',
+                                    textAlign: TextAlign.right,
+                                    style: TextStyle(
+                                      color: dark,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ),
+                                Text(
+                                  '${chosen.length} أطعمة',
+                                  style: TextStyle(
+                                    color: dark.withOpacity(0.65),
+                                    fontSize: 12,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 8),
+                            if (chosen.isEmpty)
+                              Padding(
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 10,
+                                ),
+                                child: Text(
+                                  'لم تختاري أي طعام بعد',
+                                  textAlign: TextAlign.right,
+                                  style: TextStyle(
+                                    color: dark.withOpacity(0.6),
+                                    fontSize: 13,
+                                  ),
+                                ),
+                              )
+                            else
+                              Container(
+                                constraints: const BoxConstraints(
+                                  maxHeight: 145,
+                                ),
+                                width: double.infinity,
+                                padding: const EdgeInsets.all(10),
+                                decoration: BoxDecoration(
+                                  color: primary.withOpacity(0.045),
+                                  border: Border.all(color: border),
+                                  borderRadius:
+                                  BorderRadius.circular(12),
+                                ),
+                                child: SingleChildScrollView(
+                                  child: Wrap(
+                                    spacing: 6,
+                                    runSpacing: 5,
+                                    children: [
+                                      for (final group in foodGroups.keys)
+                                        for (final food in <String>[
+                                          ...draftSelected[group]!,
+                                          ...draftCustom[group]!,
+                                        ])
+                                          InputChip(
+                                            label: Text(food),
+                                            onDeleted: () =>
+                                                removeFood(group, food),
+                                          ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                          ],
+                        ),
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(
+                          16, 8, 16, 16,
+                        ),
+                        child: SizedBox(
+                          width: double.infinity,
+                          child: ElevatedButton(
+                            onPressed: () =>
+                                Navigator.pop(sheetContext, true),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: primary,
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(
+                                vertical: 13,
+                              ),
+                              shape: RoundedRectangleBorder(
+                                borderRadius:
+                                BorderRadius.circular(12),
+                              ),
+                            ),
+                            child: Text(
+                              'تم الاختيار (${chosen.length})',
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+
+    WidgetsBinding.instance.addPostFrameCallback(
+          (_) => otherController.dispose(),
+    );
+
+    if (!mounted || confirmed != true) return;
+
+    setState(() {
+      _selectedFoods
+        ..clear()
+        ..addAll(draftSelected);
+
+      _customFoods
+        ..clear()
+        ..addAll(draftCustom);
+
+      _foodError = _foodNames.isEmpty
+          ? 'اختاري طعامًا واحدًا على الأقل'
+          : null;
+    });
+  }
+
+  void _resetForm() {
+    _notesController.clear();
+
+    setState(() {
+      _mealType = null;
+      _mealDate = null;
+      _mealTime = null;
+
+      _selectedFoods.clear();
+      _customFoods.clear();
+
+      _typeError = null;
+      _foodError = null;
+      _dateError = null;
+      _timeError = null;
+
+      _showNotes = false;
+      _editingIndex = null;
+    });
+  }
+
+  void _save() {
+    FocusScope.of(context).unfocus();
+
+    setState(() {
+      _typeError = _mealType == null ? 'مطلوب' : null;
+
+      _foodError = _foodNames.isEmpty
+          ? 'اختاري طعامًا واحدًا على الأقل'
+          : null;
+
+      _dateError = _mealDate == null ? 'مطلوب' : null;
+
+      _timeError = _mealTime == null
+          ? 'مطلوب'
+          : _isFuture()
+          ? 'لا يمكن اختيار وقت مستقبلي'
+          : null;
+    });
+
+    if (_typeError != null ||
+        _foodError != null ||
+        _dateError != null ||
+        _timeError != null) {
+      return;
+    }
+
+    final date = _mealDate!;
+    final time = _mealTime!;
+    final notes = _notesController.text.trim();
+
+    final entry = _MealEntry(
+      type: _mealType!,
+      foods: _chosenFoods(),
+      dateTime: DateTime(
+        date.year,
+        date.month,
+        date.day,
+        time.hour,
+        time.minute,
+      ),
+      notes: notes.isEmpty ? null : notes,
+    );
+
+    // إذا فتحت الشاشة من قراءة السكر،
+    // نرجع بيانات الوجبة للشاشة السابقة.
+    if (widget.returnMealOnSave) {
+      Navigator.pop(context, {
+        'meal_type': entry.type,
+        'foods': entry.foods,
+        'meal_date': _formatApiDate(entry.dateTime),
+        'meal_time': _formatApiTime(entry.dateTime),
+        'notes': entry.notes,
+      });
+      return;
+    }
+
+    // الحفظ المؤقت عند فتح شاشة الوجبات بشكل مستقل.
+    setState(() {
+      if (_editingIndex == null) {
+        _sessionMeals.insert(0, entry);
+      } else {
+        _sessionMeals[_editingIndex!] = entry;
+      }
+    });
+
+    _resetForm();
+
+    _message(
+      'تم تسجيل الوجبة مؤقتًا في هذه الصفحة. '
+          'الحفظ الدائم سيتاح بعد ربط Laravel.',
+    );
+  }
+
+  void _edit(int index) {
+    final entry = _sessionMeals[index];
+    _notesController.text = entry.notes ?? '';
+
+    setState(() {
+      _editingIndex = index;
+      _mealType = entry.type;
+      _mealDate = _dateOnly(entry.dateTime);
+      _mealTime = TimeOfDay.fromDateTime(entry.dateTime);
+
+      _selectedFoods.clear();
+      _customFoods.clear();
+
+      for (final item in entry.foods.entries) {
+        final predefined = foodGroups[item.key] ?? <String>[];
+
+        _selectedFoods[item.key] = item.value
+            .where(predefined.contains)
+            .toSet();
+
+        _customFoods[item.key] = item.value
+            .where((food) => !predefined.contains(food))
+            .toList();
+      }
+
+      _showNotes = entry.notes != null;
+      _showMeals = false;
+
+      _typeError = null;
+      _foodError = null;
+      _dateError = null;
+      _timeError = null;
+    });
+  }
+
+  Future<void> _delete(int index) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) {
+        return Directionality(
+          textDirection: TextDirection.rtl,
+          child: AlertDialog(
+            title: const Text('حذف الوجبة؟'),
+            content: const Text(
+              'سيتم حذفها من القائمة المؤقتة.',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () =>
+                    Navigator.pop(dialogContext, false),
+                child: const Text('إلغاء'),
+              ),
+              TextButton(
+                onPressed: () =>
+                    Navigator.pop(dialogContext, true),
+                child: const Text('حذف'),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+
+    if (!mounted || confirmed != true) return;
+
+    final wasEditing = _editingIndex == index;
+
+    setState(() {
+      _sessionMeals.removeAt(index);
+
+      if (_editingIndex != null && _editingIndex! > index) {
+        _editingIndex = _editingIndex! - 1;
+      }
+    });
+
+    if (wasEditing) {
+      _resetForm();
+    }
+  }
+
+  InputDecoration _decoration(
+      String hint,
+      IconData icon,
+      Color primary,
+      Color border,
+      Color fill, {
+        String? error,
+      }) {
+    return InputDecoration(
+      hintText: hint,
+      hintTextDirection: TextDirection.rtl,
+      errorText: error,
+      prefixIcon: Icon(
+        icon,
+        color: primary,
+        size: 20,
+      ),
+      filled: true,
+      fillColor: fill,
+      isDense: true,
+      contentPadding: const EdgeInsets.symmetric(
+        horizontal: 12,
+        vertical: 13,
+      ),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: BorderSide(
+          color: border,
+          width: 1.2,
+        ),
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: BorderSide(
+          color: primary,
+          width: 1.8,
+        ),
+      ),
+      errorBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: const BorderSide(color: Colors.red),
+      ),
+      focusedErrorBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: const BorderSide(color: Colors.red),
+      ),
+    );
+  }
+
+  Widget _field({
+    required String text,
+    required IconData icon,
+    required VoidCallback onTap,
+    required Color primary,
+    required Color border,
+    required Color fill,
+    required Color dark,
+    String? error,
+    bool placeholder = false,
+    Key? key,
+    int maxLines = 1,
+  }) {
+    return InkWell(
+      key: key,
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(12),
+      child: InputDecorator(
+        decoration: _decoration(
+          '',
+          icon,
+          primary,
+          border,
+          fill,
+          error: error,
+        ),
+        child: Align(
+          alignment: Alignment.centerRight,
+          child: Text(
+            text,
+            textAlign: TextAlign.right,
+            maxLines: maxLines,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              fontSize: 13,
+              color: placeholder
+                  ? dark.withOpacity(0.55)
+                  : dark,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _foldable({
+    required String title,
+    required IconData icon,
+    required bool expanded,
+    required VoidCallback onTap,
+    required Color primary,
+    required Color border,
+    required Color fill,
+    required Color dark,
+    String? subtitle,
+    Widget? content,
+  }) {
+    return Container(
+      decoration: BoxDecoration(
+        color: fill,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: border),
+      ),
+      child: Column(
+        children: [
+          ListTile(
+            dense: true,
+            leading: Icon(icon, color: primary, size: 21),
+            title: Text(
+              title,
+              textAlign: TextAlign.right,
+              style: TextStyle(
+                color: dark,
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            subtitle: subtitle == null
+                ? null
+                : Text(
+              subtitle,
+              textAlign: TextAlign.right,
+              style: const TextStyle(fontSize: 11),
+            ),
+            trailing: Icon(
+              expanded
+                  ? Icons.keyboard_arrow_up
+                  : Icons.keyboard_arrow_down,
+              color: primary,
+            ),
+            onTap: onTap,
+          ),
+          if (expanded && content != null) content,
+        ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final primary = theme.primaryColor;
+    final dark = theme.colorScheme.onSurface;
+    final fill = theme.cardColor;
+    final border = _border(theme);
+
+    final isDark = theme.brightness == Brightness.dark;
+
+    return Scaffold(
+      body: SafeArea(
+        child: Directionality(
+          textDirection: TextDirection.rtl,
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              final verySmall = constraints.maxWidth < 390;
+
+              final horizontal = verySmall
+                  ? 14.0
+                  : constraints.maxWidth >= 600
+                  ? 36.0
+                  : 20.0;
+
+              return SingleChildScrollView(
+                physics: const BouncingScrollPhysics(),
+                padding: EdgeInsets.symmetric(
+                  horizontal: horizontal,
+                  vertical: 14,
+                ),
+                child: Center(
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(
+                      maxWidth: 720,
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        SizedBox(
+                          height: 46,
+                          child: Stack(
+                            alignment: Alignment.center,
+                            children: [
+                              Text(
+                                _editingIndex == null
+                                    ? 'تسجيل وجبة'
+                                    : 'تعديل وجبة',
+                                style: TextStyle(
+                                  fontSize: verySmall ? 18 : 22,
+                                  fontWeight: FontWeight.bold,
+                                  color: dark,
+                                ),
+                              ),
+                              Align(
+                                alignment:
+                                AlignmentDirectional.centerStart,
+                                child: IconButton(
+                                  onPressed: () =>
+                                      Navigator.pop(context),
+                                  icon: Icon(
+                                    Icons.arrow_back_ios_new_rounded,
+                                    color: dark,
+                                  ),
+                                ),
+                              ),
+                              Align(
+                                alignment:
+                                AlignmentDirectional.centerEnd,
+                                child: ElevatedButton(
+                                  onPressed: _save,
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: primary,
+                                    foregroundColor: Colors.white,
+                                    elevation: 0,
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius:
+                                      BorderRadius.circular(12),
+                                    ),
+                                  ),
+                                  child: Text(
+                                    _editingIndex == null
+                                        ? 'حفظ'
+                                        : 'تحديث',
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 24),
+                        Row(
+                          children: [
+                            Icon(
+                              Icons.restaurant_rounded,
+                              color: primary,
+                              size: 22,
+                            ),
+                            const SizedBox(width: 7),
+                            Text(
+                              _editingIndex == null
+                                  ? 'إضافة وجبة جديدة'
+                                  : 'تعديل الوجبة',
+                              style: TextStyle(
+                                fontSize: 17,
+                                fontWeight: FontWeight.bold,
+                                color: dark,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 14),
+                        _field(
+                          key: _typeKey,
+                          text: _mealType ?? 'نوع الوجبة',
+                          placeholder: _mealType == null,
+                          icon: Icons.list_rounded,
+                          onTap: _chooseMealType,
+                          primary: primary,
+                          border: border,
+                          fill: fill,
+                          dark: dark,
+                          error: _typeError,
+                        ),
+                        const SizedBox(height: 12),
+                        _field(
+                          text: _foodNames.isEmpty
+                              ? 'اختيار الأطعمة'
+                              : _foodNames.join('، '),
+                          placeholder: _foodNames.isEmpty,
+                          icon: Icons.layers_outlined,
+                          onTap: _openFoodPicker,
+                          primary: primary,
+                          border: border,
+                          fill: fill,
+                          dark: dark,
+                          error: _foodError,
+                          maxLines: 2,
+                        ),
+                        const SizedBox(height: 12),
+                        if (verySmall) ...[
+                          _field(
+                            text: _mealDate == null
+                                ? 'تاريخ الوجبة'
+                                : _dateText(_mealDate!),
+                            placeholder: _mealDate == null,
+                            icon: Icons.calendar_month_outlined,
+                            onTap: _pickDate,
+                            primary: primary,
+                            border: border,
+                            fill: fill,
+                            dark: dark,
+                            error: _dateError,
+                          ),
+                          const SizedBox(height: 12),
+                          _field(
+                            text: _mealTime == null
+                                ? 'وقت الوجبة'
+                                : _timeText(_mealTime!),
+                            placeholder: _mealTime == null,
+                            icon: Icons.access_time_rounded,
+                            onTap: _pickTime,
+                            primary: primary,
+                            border: border,
+                            fill: fill,
+                            dark: dark,
+                            error: _timeError,
+                          ),
+                        ] else
+                          Row(
+                            children: [
+                              Expanded(
+                                child: _field(
+                                  text: _mealDate == null
+                                      ? 'تاريخ الوجبة'
+                                      : _dateText(_mealDate!),
+                                  placeholder: _mealDate == null,
+                                  icon:
+                                  Icons.calendar_month_outlined,
+                                  onTap: _pickDate,
+                                  primary: primary,
+                                  border: border,
+                                  fill: fill,
+                                  dark: dark,
+                                  error: _dateError,
+                                ),
+                              ),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: _field(
+                                  text: _mealTime == null
+                                      ? 'وقت الوجبة'
+                                      : _timeText(_mealTime!),
+                                  placeholder: _mealTime == null,
+                                  icon: Icons.access_time_rounded,
+                                  onTap: _pickTime,
+                                  primary: primary,
+                                  border: border,
+                                  fill: fill,
+                                  dark: dark,
+                                  error: _timeError,
+                                ),
+                              ),
+                            ],
+                          ),
+                        const SizedBox(height: 12),
+                        _foldable(
+                          title: 'إضافة ملاحظة (اختياري)',
+                          icon: Icons.edit_note_rounded,
+                          expanded: _showNotes,
+                          onTap: () {
+                            setState(() {
+                              _showNotes = !_showNotes;
+                            });
+                          },
+                          primary: primary,
+                          border: border,
+                          fill: fill,
+                          dark: dark,
+                          content: Padding(
+                            padding: const EdgeInsets.fromLTRB(
+                              12, 0, 12, 12,
+                            ),
+                            child: TextField(
+                              controller: _notesController,
+                              maxLength: 200,
+                              minLines: 2,
+                              maxLines: 4,
+                              textAlign: TextAlign.right,
+                              decoration: _decoration(
+                                'مثلاً: الطفل لم يأكل الوجبة كاملة',
+                                Icons.notes,
+                                primary,
+                                border,
+                                fill,
+                              ),
+                            ),
+                          ),
+                        ),
+                        if (_editingIndex != null)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 8),
+                            child: TextButton(
+                              onPressed: _resetForm,
+                              child: const Text('إلغاء التعديل'),
+                            ),
+                          ),
+                        const SizedBox(height: 18),
+                        _foldable(
+                          title: 'الوجبات المسجلة',
+                          icon: Icons.restaurant_menu_rounded,
+                          subtitle:
+                          '(${_sessionMeals.length}) — مؤقت حتى ربط Laravel',
+                          expanded: _showMeals,
+                          onTap: () {
+                            setState(() {
+                              _showMeals = !_showMeals;
+                            });
+                          },
+                          primary: primary,
+                          border: border,
+                          fill: fill,
+                          dark: dark,
+                          content: Column(
+                            children: [
+                              const Divider(height: 1),
+                              if (_sessionMeals.isEmpty)
+                                const Padding(
+                                  padding: EdgeInsets.all(16),
+                                  child: Text(
+                                    'لا توجد وجبات مسجلة مؤقتًا',
+                                  ),
+                                ),
+                              ...List.generate(
+                                _sessionMeals.length,
+                                    (index) {
+                                  final meal = _sessionMeals[index];
+
+                                  return Column(
+                                    children: [
+                                      ListTile(
+                                        title: Text(
+                                          meal.type,
+                                          textAlign: TextAlign.right,
+                                          style: const TextStyle(
+                                            fontWeight:
+                                            FontWeight.w600,
+                                          ),
+                                        ),
+                                        subtitle: Text(
+                                          '${meal.summary}\n'
+                                              '${_dateText(meal.dateTime)} - '
+                                              '${_timeText(TimeOfDay.fromDateTime(meal.dateTime))}'
+                                              '${meal.notes == null ? '' : '\nملاحظة: ${meal.notes}'}',
+                                          textAlign: TextAlign.right,
+                                        ),
+                                        isThreeLine: true,
+                                        trailing:
+                                        PopupMenuButton<String>(
+                                          tooltip: 'خيارات الوجبة',
+                                          onSelected: (action) {
+                                            if (action == 'edit') {
+                                              _edit(index);
+                                            }
+                                            if (action == 'delete') {
+                                              _delete(index);
+                                            }
+                                          },
+                                          itemBuilder: (_) => const [
+                                            PopupMenuItem(
+                                              value: 'edit',
+                                              child: Text('تعديل'),
+                                            ),
+                                            PopupMenuItem(
+                                              value: 'delete',
+                                              child: Text('حذف'),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                      if (index !=
+                                          _sessionMeals.length - 1)
+                                        const Divider(height: 1),
+                                    ],
+                                  );
+                                },
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 18),
+                        Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: isDark
+                                ? primary.withOpacity(0.08)
+                                : const Color(0xffEEF7FA),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(
+                                Icons.info_outline_rounded,
+                                color: primary,
+                                size: 19,
+                              ),
+                              const SizedBox(width: 7),
+                              Flexible(
+                                child: Text(
+                                  'يرجى التأكد من صحة البيانات قبل الحفظ',
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(
+                                    color: dark,
+                                    fontSize: 12,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 22),
+                      ],
+                    ),
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
       ),
     );
   }
 
   @override
   void dispose() {
-    customMealNameController.dispose();
-    ingredientsController.dispose();
-    notesController.dispose();
-    customMealNameFocusNode.dispose();
-
+    _notesController.dispose();
     super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final ThemeData theme = Theme.of(context);
-
-    final Color primaryColor = theme.primaryColor;
-
-    final Color darkColor =
-        theme.colorScheme.onSurface;
-
-    final Color cardColor = theme.cardColor;
-
-    final bool isDark =
-        theme.brightness == Brightness.dark;
-
-    final Color borderColor = isDark
-        ? darkColor.withOpacity(0.14)
-        : const Color(0xffD7E7E7);
-
-    final Color hintColor = isDark
-        ? darkColor.withOpacity(0.52)
-        : const Color(0xff8A989D);
-
-
-    return Scaffold(
-      body: SafeArea(
-        child: LayoutBuilder(
-          builder: (context, constraints) {
-            final double screenWidth =
-                constraints.maxWidth;
-
-            final double screenHeight =
-                constraints.maxHeight;
-
-            final bool isVerySmall =
-                screenWidth < 390;
-
-            final bool isSmallScreen =
-                screenWidth < 430 ||
-                    screenHeight < 650;
-
-            final bool isTablet =
-                screenWidth >= 600;
-
-            final double horizontalPadding =
-            isVerySmall
-                ? 14
-                : isTablet
-                ? 36
-                : 20;
-
-            return Directionality(
-              textDirection: TextDirection.rtl,
-              child: SingleChildScrollView(
-                physics:
-                const BouncingScrollPhysics(),
-                padding: EdgeInsets.symmetric(
-                  horizontal: horizontalPadding,
-                  vertical:
-                  isSmallScreen ? 12 : 16,
-                ),
-                child: Center(
-                  child: ConstrainedBox(
-                    constraints:
-                    const BoxConstraints(
-                      maxWidth: 720,
-                    ),
-                    child: Form(
-                      key: formKey,
-                      child: Column(
-                        children: [
-                          SizedBox(
-                            height: 48,
-                            child: Stack(
-                              alignment:
-                              Alignment.center,
-                              children: [
-                                Text(
-                                  'تسجيل وجبة',
-                                  textAlign:
-                                  TextAlign.center,
-                                  style: TextStyle(
-                                    fontSize:
-                                    isVerySmall
-                                        ? 18
-                                        : 22,
-                                    fontWeight:
-                                    FontWeight
-                                        .bold,
-                                    color:
-                                    darkColor,
-                                  ),
-                                ),
-
-                                Align(
-                                  alignment:
-                                  AlignmentDirectional
-                                      .centerStart,
-                                  child: IconButton(
-                                    onPressed:
-                                    isSaving
-                                        ? null
-                                        : () {
-                                      Navigator.pop(
-                                        context,
-                                      );
-                                    },
-                                    padding:
-                                    EdgeInsets.zero,
-                                    constraints:
-                                    const BoxConstraints(
-                                      minWidth: 44,
-                                      minHeight: 44,
-                                    ),
-                                    icon: Icon(
-                                      Icons
-                                          .arrow_back_ios_new_rounded,
-                                      color:
-                                      darkColor,
-                                      size: 22,
-                                    ),
-                                  ),
-                                ),
-
-                                Align(
-                                  alignment:
-                                  AlignmentDirectional
-                                      .centerEnd,
-                                  child: SizedBox(
-                                    height: 44,
-                                    child:
-                                    ElevatedButton(
-                                      onPressed:
-                                      isSaving
-                                          ? null
-                                          : saveMeal,
-                                      style:
-                                      ElevatedButton
-                                          .styleFrom(
-                                        backgroundColor:
-                                        primaryColor,
-                                        foregroundColor:
-                                        Colors
-                                            .white,
-                                        padding:
-                                        EdgeInsets
-                                            .symmetric(
-                                          horizontal:
-                                          isVerySmall
-                                              ? 14
-                                              : 18,
-                                        ),
-                                        shape:
-                                        RoundedRectangleBorder(
-                                          borderRadius:
-                                          BorderRadius
-                                              .circular(
-                                            12,
-                                          ),
-                                        ),
-                                        elevation: 0,
-                                      ),
-                                      child: isSaving
-                                          ? const SizedBox(
-                                        width:
-                                        21,
-                                        height:
-                                        21,
-                                        child:
-                                        CircularProgressIndicator(
-                                          strokeWidth:
-                                          2.3,
-                                          color:
-                                          Colors.white,
-                                        ),
-                                      )
-                                          : Text(
-                                        'حفظ',
-                                        style:
-                                        TextStyle(
-                                          fontSize:
-                                          isVerySmall
-                                              ? 14
-                                              : 16,
-                                          fontWeight:
-                                          FontWeight.bold,
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-
-                          SizedBox(
-                            height:
-                            isSmallScreen
-                                ? 35
-                                : 45,
-                          ),
-
-                          Row(
-                            children: [
-                              Icon(
-                                Icons
-                                    .restaurant_rounded,
-                                color:
-                                primaryColor,
-                                size: 24,
-                              ),
-
-                              const SizedBox(
-                                width: 7,
-                              ),
-
-                              Text(
-                                'بيانات الوجبة',
-                                style: TextStyle(
-                                  fontSize: 18,
-                                  fontWeight:
-                                  FontWeight.bold,
-                                  color: darkColor,
-                                ),
-                              ),
-                            ],
-                          ),
-
-                          const SizedBox(
-                            height: 16,
-                          ),
-
-                          _responsivePair(
-                            isVerySmall:
-                            isVerySmall,
-                            first: _mealTypeField(
-                              primaryColor:
-                              primaryColor,
-                              borderColor:
-                              borderColor,
-                              fieldColor:
-                              cardColor,
-                              textColor:
-                              darkColor,
-                              hintColor:
-                              hintColor,
-                            ),
-                            second:
-                            _mealNameField(
-                              primaryColor:
-                              primaryColor,
-                              borderColor:
-                              borderColor,
-                              fieldColor:
-                              cardColor,
-                              textColor:
-                              darkColor,
-                              hintColor:
-                              hintColor,
-                            ),
-                          ),
-
-                          const SizedBox(
-                            height: 16,
-                          ),
-
-                          _responsivePair(
-                            isVerySmall:
-                            isVerySmall,
-                            first:
-                            _ingredientsField(
-                              primaryColor:
-                              primaryColor,
-                              borderColor:
-                              borderColor,
-                              fieldColor:
-                              cardColor,
-                              textColor:
-                              darkColor,
-                              hintColor:
-                              hintColor,
-                            ),
-                            second: _portionField(
-                              primaryColor:
-                              primaryColor,
-                              borderColor:
-                              borderColor,
-                              fieldColor:
-                              cardColor,
-                              textColor:
-                              darkColor,
-                              hintColor:
-                              hintColor,
-                            ),
-                          ),
-
-                          const SizedBox(
-                            height: 16,
-                          ),
-
-                          _responsivePair(
-                            isVerySmall:
-                            isVerySmall,
-                            first: _dateField(
-                              primaryColor:
-                              primaryColor,
-                              borderColor:
-                              borderColor,
-                              hintColor:
-                              hintColor,
-                              darkColor:
-                              darkColor,
-                              fieldColor:
-                              cardColor,
-                            ),
-                            second: _timeField(
-                              primaryColor:
-                              primaryColor,
-                              borderColor:
-                              borderColor,
-                              hintColor:
-                              hintColor,
-                              darkColor:
-                              darkColor,
-                              fieldColor:
-                              cardColor,
-                            ),
-                          ),
-
-                          const SizedBox(
-                            height: 16,
-                          ),
-
-                          TextFormField(
-                            controller:
-                            notesController,
-                            enabled: !isSaving,
-                            textAlign:
-                            TextAlign.right,
-                            keyboardType:
-                            TextInputType
-                                .multiline,
-                            minLines: 3,
-                            maxLines: 5,
-                            maxLength: 200,
-                            style: TextStyle(
-                              color: darkColor,
-                            ),
-                            decoration:
-                            inputDecoration(
-                              icon: Icons
-                                  .edit_note_rounded,
-                              borderColor:
-                              borderColor,
-                              primaryColor:
-                              primaryColor,
-                              errorText: null,
-                              fieldColor:
-                              cardColor,
-                            ).copyWith(
-                              hintText:
-                              'اكتب أي ملاحظات إضافية (اختياري)',
-                              hintTextDirection:
-                              TextDirection
-                                  .rtl,
-                              hintStyle:
-                              TextStyle(
-                                color:
-                                hintColor,
-                                fontSize: 14,
-                              ),
-                              alignLabelWithHint:
-                              true,
-                              counterStyle:
-                              TextStyle(
-                                color:
-                                hintColor,
-                              ),
-                            ),
-                          ),
-
-                          const SizedBox(
-                            height: 150,
-                          ),
-
-                          Container(
-                            width:
-                            double.infinity,
-                            padding:
-                            const EdgeInsets
-                                .symmetric(
-                              horizontal: 14,
-                              vertical: 13,
-                            ),
-                            decoration:
-                            BoxDecoration(
-                              color: isDark
-                                  ? primaryColor
-                                  .withOpacity(
-                                  0.08)
-                                  : const Color(
-                                  0xffEEF7FA),
-                              borderRadius:
-                              BorderRadius
-                                  .circular(
-                                13,
-                              ),
-                            ),
-                            child: Row(
-                              mainAxisAlignment:
-                              MainAxisAlignment
-                                  .center,
-                              children: [
-                                Icon(
-                                  Icons
-                                      .info_outline_rounded,
-                                  color:
-                                  primaryColor,
-                                  size: 20,
-                                ),
-
-                                const SizedBox(
-                                  width: 7,
-                                ),
-
-                                Flexible(
-                                  child: Text(
-                                    'يرجى التأكد من صحة البيانات قبل الحفظ',
-                                    textAlign:
-                                    TextAlign
-                                        .center,
-                                    style:
-                                    TextStyle(
-                                      fontSize: 13,
-                                      color:
-                                      darkColor,
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-
-                          const SizedBox(
-                            height: 25,
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            );
-          },
-        ),
-      ),
-    );
-  }
-
-  Widget _responsivePair({
-    required bool isVerySmall,
-    required Widget first,
-    required Widget second,
-  }) {
-    if (isVerySmall) {
-      return Column(
-        children: [
-          first,
-          const SizedBox(height: 16),
-          second,
-        ],
-      );
-    }
-
-    return Row(
-      crossAxisAlignment:
-      CrossAxisAlignment.start,
-      children: [
-        Expanded(child: first),
-        const SizedBox(width: 10),
-        Expanded(child: second),
-      ],
-    );
-  }
-
-  Widget _mealTypeField({
-    required Color primaryColor,
-    required Color borderColor,
-    required Color fieldColor,
-    required Color textColor,
-    required Color hintColor,
-  }) {
-    return Directionality(
-      textDirection: TextDirection.rtl,
-      child:
-      DropdownButtonFormField<String>(
-        value: selectedMealType,
-        isExpanded: true,
-        dropdownColor: fieldColor,
-        style: TextStyle(
-          color: textColor,
-          fontSize: 14,
-        ),
-        iconEnabledColor: textColor,
-        alignment:
-        AlignmentDirectional.centerStart,
-        validator: (value) {
-          if (value == null) {
-            return 'مطلوب';
-          }
-
-          return null;
-        },
-        decoration: inputDecoration(
-          icon: Icons.list_rounded,
-          borderColor: borderColor,
-          primaryColor: primaryColor,
-          errorText: null,
-          fieldColor: fieldColor,
-        ),
-        hint: _RightText(
-          'نوع الوجبة',
-          isHint: true,
-          textColor: textColor,
-          hintColor: hintColor,
-        ),
-        items: [
-          _dropdownItem(
-            'الإفطار',
-            textColor,
-            hintColor,
-          ),
-          _dropdownItem(
-            'الغداء',
-            textColor,
-            hintColor,
-          ),
-          _dropdownItem(
-            'العشاء',
-            textColor,
-            hintColor,
-          ),
-          _dropdownItem(
-            'وجبة خفيفة',
-            textColor,
-            hintColor,
-          ),
-        ],
-        onChanged: isSaving
-            ? null
-            : (value) {
-          setState(() {
-            selectedMealType = value;
-          });
-        },
-      ),
-    );
-  }
-
-  Widget _mealNameField({
-    required Color primaryColor,
-    required Color borderColor,
-    required Color fieldColor,
-    required Color textColor,
-    required Color hintColor,
-  }) {
-    if (isOtherMealName) {
-      return TextFormField(
-        controller:
-        customMealNameController,
-        focusNode:
-        customMealNameFocusNode,
-        enabled: !isSaving,
-        autofocus: true,
-        textAlign: TextAlign.right,
-        style: TextStyle(
-          color: textColor,
-        ),
-        autovalidateMode:
-        AutovalidateMode
-            .onUserInteraction,
-        validator: (value) {
-          return Validators.arabicText(
-            value: value,
-            minLength: 2,
-            maxLength: 50,
-          );
-        },
-        decoration: inputDecoration(
-          icon:
-          Icons.restaurant_menu_rounded,
-          borderColor: borderColor,
-          primaryColor: primaryColor,
-          errorText: null,
-          fieldColor: fieldColor,
-        ).copyWith(
-          hintText: 'اكتب اسم الوجبة',
-          hintTextDirection:
-          TextDirection.rtl,
-          hintStyle: TextStyle(
-            color: hintColor,
-            fontSize: 14,
-          ),
-          suffixIcon: IconButton(
-            tooltip: 'الرجوع للخيارات',
-            onPressed: isSaving
-                ? null
-                : returnToMealOptions,
-            icon: Icon(
-              Icons
-                  .keyboard_arrow_down_rounded,
-              color: textColor,
-            ),
-          ),
-        ),
-      );
-    }
-
-    return Directionality(
-      textDirection: TextDirection.rtl,
-      child:
-      DropdownButtonFormField<String>(
-        value: selectedMealName,
-        isExpanded: true,
-        dropdownColor: fieldColor,
-        style: TextStyle(
-          color: textColor,
-          fontSize: 14,
-        ),
-        iconEnabledColor: textColor,
-        alignment:
-        AlignmentDirectional.centerStart,
-        validator: (value) {
-          if (!isOtherMealName &&
-              value == null) {
-            return 'مطلوب';
-          }
-
-          return null;
-        },
-        decoration: inputDecoration(
-          icon:
-          Icons.restaurant_menu_rounded,
-          borderColor: borderColor,
-          primaryColor: primaryColor,
-          errorText: null,
-          fieldColor: fieldColor,
-        ),
-        hint: _RightText(
-          'اسم الوجبة',
-          isHint: true,
-          textColor: textColor,
-          hintColor: hintColor,
-        ),
-        items: [
-          _dropdownItem(
-            'أرز',
-            textColor,
-            hintColor,
-          ),
-          _dropdownItem(
-            'خبز',
-            textColor,
-            hintColor,
-          ),
-          _dropdownItem(
-            'سلطة',
-            textColor,
-            hintColor,
-          ),
-          _dropdownItem(
-            'فواكه',
-            textColor,
-            hintColor,
-          ),
-          _dropdownItem(
-            'وجبة أخرى',
-            textColor,
-            hintColor,
-          ),
-        ],
-        onChanged: isSaving
-            ? null
-            : (value) {
-          if (value ==
-              'وجبة أخرى') {
-            selectOtherMealName();
-            return;
-          }
-
-          setState(() {
-            selectedMealName =
-                value;
-          });
-        },
-      ),
-    );
-  }
-
-  Widget _ingredientsField({
-    required Color primaryColor,
-    required Color borderColor,
-    required Color fieldColor,
-    required Color textColor,
-    required Color hintColor,
-  }) {
-    return TextFormField(
-      controller: ingredientsController,
-      enabled: !isSaving,
-      textAlign: TextAlign.right,
-      keyboardType: TextInputType.text,
-      style: TextStyle(
-        color: textColor,
-      ),
-      autovalidateMode:
-      AutovalidateMode.onUserInteraction,
-      validator: (value) {
-        final String text =
-            value?.trim() ?? '';
-
-        if (text.isEmpty) {
-          return 'مطلوب';
-        }
-
-        if (text.length < 2) {
-          return 'النص قصير';
-        }
-
-        if (text.length > 100) {
-          return 'النص طويل';
-        }
-
-        return null;
-      },
-      decoration: inputDecoration(
-        icon:
-        Icons.receipt_long_outlined,
-        borderColor: borderColor,
-        primaryColor: primaryColor,
-        errorText: null,
-        fieldColor: fieldColor,
-      ).copyWith(
-        hintText: 'اكتب مكونات الوجبة',
-        hintTextDirection:
-        TextDirection.rtl,
-        hintStyle: TextStyle(
-          color: hintColor,
-          fontSize: 14,
-        ),
-      ),
-    );
-  }
-
-  Widget _portionField({
-    required Color primaryColor,
-    required Color borderColor,
-    required Color fieldColor,
-    required Color textColor,
-    required Color hintColor,
-  }) {
-    return Directionality(
-      textDirection: TextDirection.rtl,
-      child:
-      DropdownButtonFormField<String>(
-        value: selectedPortionSize,
-        isExpanded: true,
-        dropdownColor: fieldColor,
-        style: TextStyle(
-          color: textColor,
-          fontSize: 14,
-        ),
-        iconEnabledColor: textColor,
-        alignment:
-        AlignmentDirectional.centerStart,
-        validator: (value) {
-          if (value == null) {
-            return 'مطلوب';
-          }
-
-          return null;
-        },
-        decoration: inputDecoration(
-          icon: Icons.pie_chart_outline,
-          borderColor: borderColor,
-          primaryColor: primaryColor,
-          errorText: null,
-          fieldColor: fieldColor,
-        ),
-        hint: _RightText(
-          'حجم الحصة',
-          isHint: true,
-          textColor: textColor,
-          hintColor: hintColor,
-        ),
-        items: [
-          _dropdownItem(
-            'صغيرة',
-            textColor,
-            hintColor,
-          ),
-          _dropdownItem(
-            'متوسطة',
-            textColor,
-            hintColor,
-          ),
-          _dropdownItem(
-            'كبيرة',
-            textColor,
-            hintColor,
-          ),
-        ],
-        onChanged: isSaving
-            ? null
-            : (value) {
-          setState(() {
-            selectedPortionSize =
-                value;
-          });
-        },
-      ),
-    );
-  }
-
-  DropdownMenuItem<String> _dropdownItem(
-      String value,
-      Color textColor,
-      Color hintColor,
-      ) {
-    return DropdownMenuItem<String>(
-      value: value,
-      child: _RightText(
-        value,
-        textColor: textColor,
-        hintColor: hintColor,
-      ),
-    );
-  }
-
-  Widget _dateField({
-    required Color primaryColor,
-    required Color borderColor,
-    required Color hintColor,
-    required Color darkColor,
-    required Color fieldColor,
-  }) {
-    return InkWell(
-      onTap: isSaving ? null : selectMealDate,
-      borderRadius:
-      BorderRadius.circular(14),
-      child: InputDecorator(
-        decoration: inputDecoration(
-          icon:
-          Icons.calendar_month_outlined,
-          borderColor: borderColor,
-          primaryColor: primaryColor,
-          errorText: mealDateError,
-          fieldColor: fieldColor,
-        ),
-        child: Text(
-          mealDate == null
-              ? 'تاريخ الوجبة'
-              : formatDate(mealDate),
-          textAlign: TextAlign.right,
-          style: TextStyle(
-            color: mealDate == null
-                ? hintColor
-                : darkColor,
-            fontSize: 14,
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _timeField({
-    required Color primaryColor,
-    required Color borderColor,
-    required Color hintColor,
-    required Color darkColor,
-    required Color fieldColor,
-  }) {
-    return InkWell(
-      onTap: isSaving ? null : selectMealTime,
-      borderRadius:
-      BorderRadius.circular(14),
-      child: InputDecorator(
-        decoration: inputDecoration(
-          icon: Icons.access_time_rounded,
-          borderColor: borderColor,
-          primaryColor: primaryColor,
-          errorText: mealTimeError,
-          fieldColor: fieldColor,
-        ),
-        child: Text(
-          mealTime == null
-              ? 'وقت الوجبة'
-              : formatTime(mealTime),
-          textAlign: TextAlign.right,
-          style: TextStyle(
-            color: mealTime == null
-                ? hintColor
-                : darkColor,
-            fontSize: 14,
-          ),
-        ),
-      ),
-    );
-  }
-
-
-  InputDecoration inputDecoration({
-    required IconData icon,
-    required Color borderColor,
-    required Color primaryColor,
-    required String? errorText,
-    required Color fieldColor,
-  }) {
-    return InputDecoration(
-      errorText: errorText,
-      errorStyle: const TextStyle(
-        fontSize: 11,
-        fontWeight: FontWeight.w500,
-      ),
-      prefixIcon: Icon(
-        icon,
-        color: primaryColor,
-      ),
-      filled: true,
-      fillColor: fieldColor,
-      contentPadding:
-      const EdgeInsets.symmetric(
-        horizontal: 12,
-        vertical: 17,
-      ),
-      enabledBorder: OutlineInputBorder(
-        borderRadius:
-        BorderRadius.circular(14),
-        borderSide: BorderSide(
-          color: borderColor,
-          width: 1.3,
-        ),
-      ),
-      focusedBorder: OutlineInputBorder(
-        borderRadius:
-        BorderRadius.circular(14),
-        borderSide: BorderSide(
-          color: primaryColor,
-          width: 2,
-        ),
-      ),
-      errorBorder: OutlineInputBorder(
-        borderRadius:
-        BorderRadius.circular(14),
-        borderSide: const BorderSide(
-          color: Colors.red,
-          width: 1.3,
-        ),
-      ),
-      focusedErrorBorder:
-      OutlineInputBorder(
-        borderRadius:
-        BorderRadius.circular(14),
-        borderSide: const BorderSide(
-          color: Colors.red,
-          width: 2,
-        ),
-      ),
-    );
-  }
-}
-
-class _RightText extends StatelessWidget {
-  final String text;
-  final bool isHint;
-  final Color textColor;
-  final Color hintColor;
-
-  const _RightText(
-      this.text, {
-        this.isHint = false,
-        required this.textColor,
-        required this.hintColor,
-      });
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      width: double.infinity,
-      child: Text(
-        text,
-        textAlign: TextAlign.right,
-        overflow: TextOverflow.ellipsis,
-        style: TextStyle(
-          color:
-          isHint ? hintColor : textColor,
-          fontSize: 14,
-        ),
-      ),
-    );
   }
 }

@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 
 import 'MealsAnalysisScreen.dart';
 import 'MedicationReportScreen.dart';
-import 'GrowthReportScreen.dart';
 import 'ActivityReportScreen.dart';
 import 'HealthAdviceReportScreen.dart';
 import 'package:pdf/pdf.dart';
@@ -155,13 +154,6 @@ class SavedReportsScreen extends StatelessWidget {
         'endDate': today,
       },
       {
-        'title': 'تقرير النمو',
-        'type': 'growth',
-        'icon': Icons.height_rounded,
-        'startDate': startDate,
-        'endDate': today,
-      },
-      {
         'title': 'تقرير النشاط',
         'type': 'activity',
         'icon': Icons.directions_run_rounded,
@@ -218,13 +210,6 @@ class SavedReportsScreen extends StatelessWidget {
         );
         break;
 
-      case 'growth':
-        screen = GrowthReportScreen(
-          childName: childName,
-          startDate: startDate,
-          endDate: endDate,
-        );
-        break;
 
       case 'activity':
         screen = ActivityReportScreen(
@@ -514,7 +499,7 @@ class SavedReportsScreen extends StatelessWidget {
               const SizedBox(width: 10),
               Expanded(
                 child: OutlinedButton.icon(
-              onPressed: () => exportReportPdf(context, report),
+                  onPressed: () => exportReportPdf(context, report),
                   icon: const Icon(
                     Icons.picture_as_pdf_outlined,
                     size: 18,

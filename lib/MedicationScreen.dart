@@ -20,115 +20,122 @@ class MedicationScreen extends StatefulWidget {
 }
 
 class _MedicationScreenState extends State<MedicationScreen> {
-  final GlobalKey<FormState> formKey = GlobalKey<FormState>();
+  final formKey = GlobalKey<FormState>();
+  final doseController = TextEditingController();
+  final otherMedicineController = TextEditingController();
+  final otherMedicineFocusNode = FocusNode();
 
-  final TextEditingController medicineController =
-  TextEditingController();
-
-  final TextEditingController doseController =
-  TextEditingController();
-
-  final TextEditingController customUnitController =
-  TextEditingController();
-
-  final FocusNode customUnitFocusNode = FocusNode();
-
+  // Temporary records until Laravel API connection.
   final List<SavedMedication> savedMedications = [];
 
-  int? editingMedicationIndex;
+  static const medicines = [
+    'Insulin',
+    'Metformin',
+    'Empagliflozin',
+    'أخرى',
+  ];
 
+  static const insulinTypes = ['Short', 'Long', 'Mixed'];
+
+  static const repeats = [
+    'مرة يوميًا',
+    'مرتان يوميًا',
+    '3 مرات يوميًا',
+  ];
+
+  static const timeLabels = [
+    'الجرعة الأولى',
+    'الجرعة الثانية',
+    'الجرعة الثالثة',
+  ];
+
+  String? selectedMedicine;
+  String? selectedInsulinType;
   String? selectedDoseUnit;
   String? selectedRepeat;
 
-  TimeOfDay? selectedTime;
-  DateTime? startDate;
+  // Separate time for every daily dose.
+  List<TimeOfDay?> selectedTimes = [];
+  List<String?> timeErrors = [];
 
-  bool isOtherDoseUnit = false;
+  DateTime? startDate;
+  int? editingMedicationIndex;
+
   bool reminderEnabled = true;
   bool isSaving = false;
 
-  String? timeError;
   String? startDateError;
 
-  final List<String> doseUnits = [
-    'وحدة',
-    'mg',
-    'ml',
-    'قرص',
-    'كبسولة',
-    'قطرة',
-  ];
+  List<String> get availableDoseUnits {
+    if (selectedMedicine == 'Insulin') return ['U'];
 
-  DateTime dateOnly(DateTime date) {
-    return DateTime(date.year, date.month, date.day);
-  }
-
-  String formatDate(DateTime? date) {
-    if (date == null) {
-      return '';
+    if (selectedMedicine == 'Metformin' ||
+        selectedMedicine == 'Empagliflozin') {
+      return ['mg'];
     }
 
-    final String day = date.day.toString().padLeft(2, '0');
-    final String month = date.month.toString().padLeft(2, '0');
+    return ['Ul', 'mg', 'mL'];
+  }
+
+  int get repeatCount {
+    switch (selectedRepeat) {
+      case 'مرة يوميًا':
+        return 1;
+      case 'مرتان يوميًا':
+        return 2;
+      case '3 مرات يوميًا':
+        return 3;
+      default:
+        return 0;
+    }
+  }
+
+  DateTime dateOnly(DateTime date) =>
+      DateTime(date.year, date.month, date.day);
+
+  String formatDate(DateTime? date) {
+    if (date == null) return '';
+
+    final day = date.day.toString().padLeft(2, '0');
+    final month = date.month.toString().padLeft(2, '0');
 
     return '$day/$month/${date.year}';
   }
 
   String formatApiDate(DateTime date) {
-    final String month = date.month.toString().padLeft(2, '0');
-    final String day = date.day.toString().padLeft(2, '0');
+    final month = date.month.toString().padLeft(2, '0');
+    final day = date.day.toString().padLeft(2, '0');
 
     return '${date.year}-$month-$day';
   }
 
   String formatTime(TimeOfDay? time) {
-    if (time == null) {
-      return '';
-    }
+    if (time == null) return '';
 
-    final int hour =
-    time.hourOfPeriod == 0 ? 12 : time.hourOfPeriod;
-
-    final String minute =
-    time.minute.toString().padLeft(2, '0');
-
-    final String period =
-    time.period == DayPeriod.am ? 'ص' : 'م';
+    final hour = time.hourOfPeriod == 0 ? 12 : time.hourOfPeriod;
+    final minute = time.minute.toString().padLeft(2, '0');
+    final period = time.period == DayPeriod.am ? 'ص' : 'م';
 
     return '$hour:$minute $period';
   }
 
   String formatApiTime(TimeOfDay time) {
-    final String hour = time.hour.toString().padLeft(2, '0');
-    final String minute =
-    time.minute.toString().padLeft(2, '0');
+    final hour = time.hour.toString().padLeft(2, '0');
+    final minute = time.minute.toString().padLeft(2, '0');
 
     return '$hour:$minute:00';
   }
 
   String? validateMedicineName(String? value) {
-    final String text = value?.trim() ?? '';
+    final text = value?.trim() ?? '';
 
-    if (text.isEmpty) {
-      return 'مطلوب';
-    }
+    if (text.isEmpty) return 'مطلوب';
+    if (text.length < 2) return 'اسم الدواء قصير';
+    if (text.length > 60) return 'اسم الدواء طويل';
 
-    if (text.length < 2) {
-      return 'اسم الدواء قصير';
-    }
+    final regex = RegExp(r'^[A-Za-z\u0621-\u064A0-9 .\-]+$');
 
-    if (text.length > 60) {
-      return 'اسم الدواء طويل';
-    }
-
-    final RegExp medicineRegex =
-    RegExp(r'^[A-Za-z\u0621-\u064A0-9 .\-]+$');
-
-    if (!medicineRegex.hasMatch(text)) {
-      return 'اسم الدواء غير صحيح';
-    }
-
-    if (text.contains('  ')) {
+    if (!regex.hasMatch(text) || text.contains('  ')) {
       return 'اسم الدواء غير صحيح';
     }
 
@@ -136,73 +143,73 @@ class _MedicationScreenState extends State<MedicationScreen> {
   }
 
   String? validateDose(String? value) {
-    final String text = value?.trim() ?? '';
+    final text = value?.trim() ?? '';
 
-    if (text.isEmpty) {
-      return 'مطلوب';
-    }
+    if (text.isEmpty) return 'مطلوب';
 
-    final double? dose = double.tryParse(text);
+    final dose = double.tryParse(text);
 
-    if (dose == null) {
-      return 'رقم غير صحيح';
-    }
-
-    if (dose <= 0) {
-      return 'الجرعة غير صحيحة';
-    }
-
-    if (dose > 9999) {
-      return 'تحقق من الجرعة';
-    }
+    if (dose == null) return 'رقم غير صحيح';
+    if (dose <= 0) return 'الجرعة غير صحيحة';
+    if (dose > 9999) return 'تحقق من الجرعة';
 
     return null;
   }
 
-  String? validateDoseUnit(String? value) {
-    if (isOtherDoseUnit) {
-      final String unit = customUnitController.text.trim();
+  // Change the number of time fields according to repetition.
+  void onRepeatChanged(String? value) {
+    if (value == null) return;
 
-      if (unit.isEmpty) {
-        return 'مطلوب';
-      }
+    final count = repeats.indexOf(value) + 1;
 
-      if (unit.length > 20) {
-        return 'الوحدة طويلة';
-      }
+    setState(() {
+      selectedRepeat = value;
 
-      return null;
-    }
+      final oldTimes = [...selectedTimes];
 
-    if (value == null) {
-      return 'مطلوب';
-    }
+      selectedTimes = List.generate(
+        count,
+            (index) => index < oldTimes.length ? oldTimes[index] : null,
+      );
 
-    return null;
+      timeErrors = List.generate(count, (_) => null);
+    });
   }
 
-  Future<void> selectMedicineTime() async {
-    final TimeOfDay? time = await showTimePicker(
+  Future<void> selectMedicineTime(int index) async {
+    if (index >= selectedTimes.length) return;
+
+    final time = await showTimePicker(
       context: context,
-      initialTime: selectedTime ?? TimeOfDay.now(),
-      helpText: 'اختيار وقت الدواء',
+      initialTime: selectedTimes[index] ?? TimeOfDay.now(),
+      helpText: 'اختيار وقت ${timeLabels[index]}',
       cancelText: 'إلغاء',
       confirmText: 'اختيار',
     );
 
-    if (time == null || !mounted) {
-      return;
-    }
+    if (time == null || !mounted) return;
 
     setState(() {
-      selectedTime = time;
-      timeError = null;
+      selectedTimes[index] = time;
+      timeErrors[index] = null;
     });
   }
 
   Future<void> selectStartDate() async {
-    final DateTime today = dateOnly(DateTime.now());
-    final DateTime birthDate = dateOnly(widget.birthDate);
+    final today = dateOnly(DateTime.now());
+    final birthDate = dateOnly(widget.birthDate);
+
+    if (birthDate.isAfter(today)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'تاريخ ميلاد الطفل غير صحيح',
+            textAlign: TextAlign.center,
+          ),
+        ),
+      );
+      return;
+    }
 
     DateTime initialDate = startDate ?? today;
 
@@ -214,7 +221,7 @@ class _MedicationScreenState extends State<MedicationScreen> {
       initialDate = today;
     }
 
-    final DateTime? date = await showDatePicker(
+    final date = await showDatePicker(
       context: context,
       initialDate: initialDate,
       firstDate: birthDate,
@@ -224,9 +231,7 @@ class _MedicationScreenState extends State<MedicationScreen> {
       confirmText: 'اختيار',
     );
 
-    if (date == null || !mounted) {
-      return;
-    }
+    if (date == null || !mounted) return;
 
     setState(() {
       startDate = date;
@@ -234,77 +239,85 @@ class _MedicationScreenState extends State<MedicationScreen> {
     });
   }
 
-  void selectOtherDoseUnit() {
+  void onMedicineChanged(String? value) {
     setState(() {
+      selectedMedicine = value;
+      selectedInsulinType = null;
       selectedDoseUnit = null;
-      isOtherDoseUnit = true;
-      customUnitController.clear();
-    });
+      otherMedicineController.clear();
 
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) {
-        customUnitFocusNode.requestFocus();
+      if (value == 'Insulin') {
+        selectedDoseUnit = 'U';
+      }
+
+      if (value == 'Metformin' || value == 'Empagliflozin') {
+        selectedDoseUnit = 'mg';
       }
     });
-  }
 
-  void returnToDoseUnits() {
-    FocusScope.of(context).unfocus();
-
-    setState(() {
-      isOtherDoseUnit = false;
-      selectedDoseUnit = null;
-      customUnitController.clear();
-    });
-  }
-
-  String get finalDoseUnit {
-    if (isOtherDoseUnit) {
-      return customUnitController.text.trim();
+    if (value == 'أخرى') {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          otherMedicineFocusNode.requestFocus();
+        }
+      });
     }
-
-    return selectedDoseUnit ?? '';
   }
 
-  bool validateDateAndTime() {
+  bool validateDateAndTimes() {
+    bool valid = true;
+
     setState(() {
-      timeError = selectedTime == null ? 'مطلوب' : null;
       startDateError = startDate == null ? 'مطلوب' : null;
+
+      timeErrors = List.generate(
+        repeatCount,
+            (index) {
+          if (selectedTimes[index] == null) {
+            valid = false;
+            return 'مطلوب';
+          }
+
+          return null;
+        },
+      );
     });
 
-    return timeError == null && startDateError == null;
+    return valid && startDateError == null;
   }
 
-  // تحميل بيانات الدواء في الحقول عند الضغط على تعديل.
   void editMedication(int index) {
-    final SavedMedication medication = savedMedications[index];
+    final medication = savedMedications[index];
 
     FocusScope.of(context).unfocus();
 
     setState(() {
       editingMedicationIndex = index;
 
-      medicineController.text = medication.name;
+      selectedMedicine = medication.medicineSelection;
+      selectedInsulinType = medication.insulinType;
+
+      otherMedicineController.text =
+      medication.medicineSelection == 'أخرى'
+          ? medication.name
+          : '';
+
       doseController.text = medication.dose;
-
+      selectedDoseUnit = medication.doseUnit;
       selectedRepeat = medication.repeat;
-      selectedTime = medication.medicineTime;
+
+      selectedTimes = medication.medicineTimes
+          .map((time) => time)
+          .toList();
+
+      timeErrors = List.generate(
+        selectedTimes.length,
+            (_) => null,
+      );
+
       startDate = medication.startDateValue;
-
       reminderEnabled = medication.reminderEnabled;
-
-      timeError = null;
       startDateError = null;
-
-      if (doseUnits.contains(medication.doseUnit)) {
-        selectedDoseUnit = medication.doseUnit;
-        isOtherDoseUnit = false;
-        customUnitController.clear();
-      } else {
-        selectedDoseUnit = null;
-        isOtherDoseUnit = true;
-        customUnitController.text = medication.doseUnit;
-      }
     });
 
     ScaffoldMessenger.of(context).hideCurrentSnackBar();
@@ -321,68 +334,66 @@ class _MedicationScreenState extends State<MedicationScreen> {
     );
   }
 
-  // حفظ دواء جديد أو تحديث دواء مسجل.
   Future<void> saveMedication() async {
-    if (isSaving) {
-      return;
-    }
+    if (isSaving) return;
 
     FocusScope.of(context).unfocus();
 
-    final bool formIsValid =
-        formKey.currentState?.validate() ?? false;
+    final formIsValid = formKey.currentState?.validate() ?? false;
+    final dateAndTimesValid = validateDateAndTimes();
 
-    final bool dateAndTimeValid = validateDateAndTime();
+    if (!formIsValid || !dateAndTimesValid) return;
 
-    if (!formIsValid || !dateAndTimeValid) {
-      return;
-    }
+    setState(() => isSaving = true);
 
-    setState(() {
-      isSaving = true;
-    });
+    final medicineName = selectedMedicine == 'أخرى'
+        ? otherMedicineController.text.trim()
+        : selectedMedicine!;
 
-    final String medicineName = medicineController.text.trim();
-    final String dose = doseController.text.trim();
+    final dose = doseController.text.trim();
 
-    final SavedMedication medication = SavedMedication(
+    final times = selectedTimes
+        .whereType<TimeOfDay>()
+        .toList();
+
+    final medication = SavedMedication(
+      medicineSelection: selectedMedicine!,
       name: medicineName,
+      insulinType:
+      selectedMedicine == 'Insulin' ? selectedInsulinType : null,
       dose: dose,
-      doseUnit: finalDoseUnit,
+      doseUnit: selectedDoseUnit!,
       repeat: selectedRepeat!,
-      time: formatTime(selectedTime),
+      times: times.map(formatTime).toList(),
       startDate: formatDate(startDate),
       reminderEnabled: reminderEnabled,
-      medicineTime: selectedTime!,
+      medicineTimes: times,
       startDateValue: startDate!,
     );
 
-    /*
-      مستقبلًا عند ربط Laravel:
+    // Future Laravel integration:
+    // POST /api/children/{childId}/medications
+    // PUT /api/children/{childId}/medications/{medicationId}
+    // DELETE /api/children/{childId}/medications/{medicationId}
 
-      POST   /api/children/{childId}/medications
-      PUT    /api/children/{childId}/medications/{medicationId}
-      DELETE /api/children/{childId}/medications/{medicationId}
+    final medicationData = {
+      'medication_name': medicineName,
+      'insulin_type': selectedInsulinType,
+      'dosage': dose,
+      'dosage_unit': selectedDoseUnit,
+      'frequency': selectedRepeat,
+      'reminder_times': times.map(formatApiTime).toList(),
+      'start_date': formatApiDate(startDate!),
+      'reminder_enabled': reminderEnabled,
+    };
 
-      ستُستخدم POST لإضافة دواء جديد،
-      وPUT لتحديث بيانات دواء موجود،
-      وDELETE لحذف دواء.
-    */
-
-    debugPrint('Medicine: $medicineName');
-    debugPrint('Dose: $dose $finalDoseUnit');
-    debugPrint('Repeat: $selectedRepeat');
-    debugPrint('Time: ${formatApiTime(selectedTime!)}');
-    debugPrint('Start date: ${formatApiDate(startDate!)}');
-    debugPrint('Reminder: $reminderEnabled');
+    debugPrint('Medication data: $medicationData');
 
     await Future.delayed(const Duration(milliseconds: 500));
 
-    if (!mounted) {
-      return;
-    }
+    if (!mounted) return;
 
-    final bool isEditing = editingMedicationIndex != null;
+    final isEditing = editingMedicationIndex != null;
 
     setState(() {
       if (editingMedicationIndex != null) {
@@ -392,7 +403,6 @@ class _MedicationScreenState extends State<MedicationScreen> {
       }
 
       isSaving = false;
-
       clearForm();
     });
 
@@ -403,7 +413,7 @@ class _MedicationScreenState extends State<MedicationScreen> {
         content: Text(
           isEditing
               ? 'تم تحديث بيانات الدواء بنجاح'
-              : 'تم حفظ الدواء بنجاح',
+              : 'تم حفظ الدواء مؤقتًا',
           textAlign: TextAlign.center,
         ),
         behavior: SnackBarBehavior.floating,
@@ -412,44 +422,36 @@ class _MedicationScreenState extends State<MedicationScreen> {
     );
   }
 
-  // تفريغ الحقول بعد الحفظ أو إلغاء التعديل.
   void clearForm() {
-    medicineController.clear();
     doseController.clear();
-    customUnitController.clear();
+    otherMedicineController.clear();
 
+    selectedMedicine = null;
+    selectedInsulinType = null;
     selectedDoseUnit = null;
     selectedRepeat = null;
 
-    selectedTime = null;
-    startDate = null;
+    selectedTimes = [];
+    timeErrors = [];
 
+    startDate = null;
     editingMedicationIndex = null;
 
-    isOtherDoseUnit = false;
     reminderEnabled = true;
-
-    timeError = null;
     startDateError = null;
 
     formKey.currentState?.reset();
-
     FocusScope.of(context).unfocus();
   }
 
   void cancelEditing() {
-    setState(() {
-      clearForm();
-    });
+    setState(clearForm);
 
     ScaffoldMessenger.of(context).hideCurrentSnackBar();
 
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
-        content: Text(
-          'تم إلغاء التعديل',
-          textAlign: TextAlign.center,
-        ),
+        content: Text('تم إلغاء التعديل', textAlign: TextAlign.center),
         behavior: SnackBarBehavior.floating,
         duration: Duration(seconds: 2),
       ),
@@ -457,18 +459,16 @@ class _MedicationScreenState extends State<MedicationScreen> {
   }
 
   void deleteMedication(int index) {
-    final SavedMedication medication = savedMedications[index];
+    final medication = savedMedications[index];
 
     setState(() {
       savedMedications.removeAt(index);
 
-      // المحافظة على الفهرس الصحيح إذا حُذف دواء أثناء التعديل.
       if (editingMedicationIndex != null) {
         if (editingMedicationIndex == index) {
           clearForm();
         } else if (editingMedicationIndex! > index) {
-          editingMedicationIndex =
-              editingMedicationIndex! - 1;
+          editingMedicationIndex = editingMedicationIndex! - 1;
         }
       }
     });
@@ -489,29 +489,26 @@ class _MedicationScreenState extends State<MedicationScreen> {
 
   @override
   void dispose() {
-    medicineController.dispose();
     doseController.dispose();
-    customUnitController.dispose();
-    customUnitFocusNode.dispose();
-
+    otherMedicineController.dispose();
+    otherMedicineFocusNode.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    final ThemeData theme = Theme.of(context);
+    final theme = Theme.of(context);
 
-    final Color primaryColor = theme.primaryColor;
-    final Color darkColor = theme.colorScheme.onSurface;
-    final Color cardColor = theme.cardColor;
+    final primaryColor = theme.primaryColor;
+    final darkColor = theme.colorScheme.onSurface;
+    final cardColor = theme.cardColor;
+    final isDark = theme.brightness == Brightness.dark;
 
-    final bool isDark = theme.brightness == Brightness.dark;
-
-    final Color borderColor = isDark
+    final borderColor = isDark
         ? darkColor.withOpacity(0.14)
         : const Color(0xffD7E7E7);
 
-    final Color hintColor = isDark
+    final hintColor = isDark
         ? darkColor.withOpacity(0.52)
         : const Color(0xff8A989D);
 
@@ -519,21 +516,17 @@ class _MedicationScreenState extends State<MedicationScreen> {
       body: SafeArea(
         child: LayoutBuilder(
           builder: (context, constraints) {
-            final double screenWidth = constraints.maxWidth;
-            final double screenHeight = constraints.maxHeight;
+            final screenWidth = constraints.maxWidth;
+            final screenHeight = constraints.maxHeight;
 
-            final bool isVerySmall = screenWidth < 390;
-
-            final bool isSmallScreen =
+            final isVerySmall = screenWidth < 390;
+            final isSmallScreen =
                 screenWidth < 430 || screenHeight < 650;
+            final isTablet = screenWidth >= 600;
 
-            final bool isTablet = screenWidth >= 600;
-
-            final double horizontalPadding = isVerySmall
-                ? 14
-                : isTablet
-                ? 36
-                : 20;
+            final horizontalPadding = isVerySmall
+                ? 14.0
+                : (isTablet ? 36.0 : 20.0);
 
             return Directionality(
               textDirection: TextDirection.rtl,
@@ -550,7 +543,7 @@ class _MedicationScreenState extends State<MedicationScreen> {
                       key: formKey,
                       child: Column(
                         children: [
-                          // Header
+                          // Header.
                           SizedBox(
                             height: 48,
                             child: Stack(
@@ -590,9 +583,8 @@ class _MedicationScreenState extends State<MedicationScreen> {
                                   child: SizedBox(
                                     height: 44,
                                     child: ElevatedButton(
-                                      onPressed: isSaving
-                                          ? null
-                                          : saveMedication,
+                                      onPressed:
+                                      isSaving ? null : saveMedication,
                                       style: ElevatedButton.styleFrom(
                                         backgroundColor: primaryColor,
                                         foregroundColor: Colors.white,
@@ -633,11 +625,9 @@ class _MedicationScreenState extends State<MedicationScreen> {
                             ),
                           ),
 
-                          SizedBox(
-                            height: isSmallScreen ? 30 : 40,
-                          ),
+                          SizedBox(height: isSmallScreen ? 30 : 40),
 
-                          // الأدوية المسجلة
+                          // Saved medications.
                           Row(
                             children: [
                               Icon(
@@ -710,21 +700,19 @@ class _MedicationScreenState extends State<MedicationScreen> {
                               itemCount: savedMedications.length,
                               separatorBuilder: (context, index) =>
                               const SizedBox(height: 12),
-                              itemBuilder: (context, index) {
-                                return medicationRecordCard(
-                                  medication:
-                                  savedMedications[index],
-                                  index: index,
-                                  primaryColor: primaryColor,
-                                  darkColor: darkColor,
-                                );
-                              },
+                              itemBuilder: (context, index) =>
+                                  medicationRecordCard(
+                                    medication: savedMedications[index],
+                                    index: index,
+                                    primaryColor: primaryColor,
+                                    darkColor: darkColor,
+                                  ),
                             ),
                           ),
 
                           const SizedBox(height: 24),
 
-                          // إضافة أو تعديل دواء
+                          // Add medication form.
                           Container(
                             width: double.infinity,
                             padding: const EdgeInsets.all(16),
@@ -762,8 +750,9 @@ class _MedicationScreenState extends State<MedicationScreen> {
                                     ),
                                     if (editingMedicationIndex != null)
                                       TextButton(
-                                        onPressed:
-                                        isSaving ? null : cancelEditing,
+                                        onPressed: isSaving
+                                            ? null
+                                            : cancelEditing,
                                         child: const Text('إلغاء التعديل'),
                                       ),
                                   ],
@@ -771,28 +760,58 @@ class _MedicationScreenState extends State<MedicationScreen> {
 
                                 const SizedBox(height: 18),
 
-                                // اسم الدواء
-                                TextFormField(
-                                  controller: medicineController,
-                                  enabled: !isSaving,
-                                  style: TextStyle(color: darkColor),
-                                  textAlign: TextAlign.right,
-                                  keyboardType: TextInputType.text,
-                                  textInputAction: TextInputAction.next,
-                                  autovalidateMode:
-                                  AutovalidateMode.onUserInteraction,
-                                  validator: validateMedicineName,
-                                  decoration: medicationDecoration(
-                                    icon: Icons.medication_outlined,
-                                    hint: 'اسم الدواء أو المكمل',
+                                _buildDropdown(
+                                  value: selectedMedicine,
+                                  values: medicines,
+                                  hint: 'اسم الدواء',
+                                  icon: Icons.medication_outlined,
+                                  primaryColor: primaryColor,
+                                  borderColor: borderColor,
+                                  cardColor: cardColor,
+                                  onChanged: onMedicineChanged,
+                                ),
+
+                                if (selectedMedicine == 'Insulin') ...[
+                                  const SizedBox(height: 16),
+                                  _buildDropdown(
+                                    value: selectedInsulinType,
+                                    values: insulinTypes,
+                                    hint: 'نوع الأنسولين',
+                                    icon: Icons.medication_liquid_outlined,
                                     primaryColor: primaryColor,
                                     borderColor: borderColor,
+                                    cardColor: cardColor,
+                                    onChanged: (value) {
+                                      setState(() {
+                                        selectedInsulinType = value;
+                                      });
+                                    },
                                   ),
-                                ),
+                                ],
+
+                                if (selectedMedicine == 'أخرى') ...[
+                                  const SizedBox(height: 16),
+                                  TextFormField(
+                                    controller: otherMedicineController,
+                                    focusNode: otherMedicineFocusNode,
+                                    enabled: !isSaving,
+                                    style: TextStyle(color: darkColor),
+                                    textAlign: TextAlign.right,
+                                    textInputAction: TextInputAction.next,
+                                    autovalidateMode:
+                                    AutovalidateMode.onUserInteraction,
+                                    validator: validateMedicineName,
+                                    decoration: medicationDecoration(
+                                      icon: Icons.edit_note_rounded,
+                                      hint: 'اكتب اسم الدواء',
+                                      primaryColor: primaryColor,
+                                      borderColor: borderColor,
+                                    ),
+                                  ),
+                                ],
 
                                 const SizedBox(height: 16),
 
-                                // الجرعة ووحدة الجرعة
                                 _responsivePair(
                                   isVerySmall: isVerySmall,
                                   first: TextFormField(
@@ -819,63 +838,17 @@ class _MedicationScreenState extends State<MedicationScreen> {
                                       borderColor: borderColor,
                                     ),
                                   ),
-                                  second: _buildDoseUnitField(
+                                  second: _buildDropdown(
+                                    value: selectedDoseUnit,
+                                    values: availableDoseUnits,
+                                    hint: 'وحدة الجرعة',
+                                    icon: Icons.scale_outlined,
                                     primaryColor: primaryColor,
                                     borderColor: borderColor,
-                                  ),
-                                ),
-
-                                const SizedBox(height: 16),
-
-                                // التكرار
-                                Directionality(
-                                  textDirection: TextDirection.rtl,
-                                  child: DropdownButtonFormField<String>(
-                                    value: selectedRepeat,
-                                    isExpanded: true,
-                                    dropdownColor: cardColor,
-                                    alignment:
-                                    AlignmentDirectional.centerStart,
-                                    validator: (value) {
-                                      return value == null ? 'مطلوب' : null;
-                                    },
-                                    decoration: medicationDecoration(
-                                      icon: Icons.repeat_rounded,
-                                      hint: '',
-                                      primaryColor: primaryColor,
-                                      borderColor: borderColor,
-                                    ),
-                                    hint: const _RightText(
-                                      'التكرار',
-                                      isHint: true,
-                                    ),
-                                    items: const [
-                                      DropdownMenuItem<String>(
-                                        value: 'مرة يوميًا',
-                                        child: _RightText('مرة يوميًا'),
-                                      ),
-                                      DropdownMenuItem<String>(
-                                        value: 'مرتان يوميًا',
-                                        child: _RightText('مرتان يوميًا'),
-                                      ),
-                                      DropdownMenuItem<String>(
-                                        value: '3 مرات يوميًا',
-                                        child: _RightText('3 مرات يوميًا'),
-                                      ),
-                                      DropdownMenuItem<String>(
-                                        value: 'مرة أسبوعيًا',
-                                        child: _RightText('مرة أسبوعيًا'),
-                                      ),
-                                      DropdownMenuItem<String>(
-                                        value: 'عند الحاجة',
-                                        child: _RightText('عند الحاجة'),
-                                      ),
-                                    ],
-                                    onChanged: isSaving
-                                        ? null
-                                        : (value) {
+                                    cardColor: cardColor,
+                                    onChanged: (value) {
                                       setState(() {
-                                        selectedRepeat = value;
+                                        selectedDoseUnit = value;
                                       });
                                     },
                                   ),
@@ -883,31 +856,68 @@ class _MedicationScreenState extends State<MedicationScreen> {
 
                                 const SizedBox(height: 16),
 
-                                // وقت الدواء وتاريخ البدء
-                                _responsivePair(
-                                  isVerySmall: isVerySmall,
-                                  first: _buildTimeField(
-                                    primaryColor: primaryColor,
-                                    borderColor: borderColor,
-                                    hintColor: hintColor,
-                                    darkColor: darkColor,
+                                // Frequency.
+                                _buildDropdown(
+                                  value: selectedRepeat,
+                                  values: repeats,
+                                  hint: 'التكرار',
+                                  icon: Icons.repeat_rounded,
+                                  primaryColor: primaryColor,
+                                  borderColor: borderColor,
+                                  cardColor: cardColor,
+                                  onChanged: onRepeatChanged,
+                                ),
+
+                                // Dynamic medication times.
+                                if (repeatCount > 0) ...[
+                                  const SizedBox(height: 18),
+
+                                  Align(
+                                    alignment:
+                                    AlignmentDirectional.centerStart,
+                                    child: Text(
+                                      'أوقات تناول الدواء',
+                                      style: TextStyle(
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.bold,
+                                        color: darkColor,
+                                      ),
+                                    ),
                                   ),
-                                  second: _buildStartDateField(
-                                    primaryColor: primaryColor,
-                                    borderColor: borderColor,
-                                    hintColor: hintColor,
-                                    darkColor: darkColor,
+
+                                  const SizedBox(height: 10),
+
+                                  ...List.generate(
+                                    repeatCount,
+                                        (index) => Padding(
+                                      padding:
+                                      const EdgeInsets.only(bottom: 12),
+                                      child: _buildTimeField(
+                                        index: index,
+                                        primaryColor: primaryColor,
+                                        borderColor: borderColor,
+                                        hintColor: hintColor,
+                                        darkColor: darkColor,
+                                      ),
+                                    ),
                                   ),
+                                ],
+
+                                // Start date.
+                                _buildStartDateField(
+                                  primaryColor: primaryColor,
+                                  borderColor: borderColor,
+                                  hintColor: hintColor,
+                                  darkColor: darkColor,
                                 ),
 
                                 const SizedBox(height: 16),
 
-                                // التذكير
+                                // Reminder switch.
                                 Container(
                                   width: double.infinity,
-                                  constraints: const BoxConstraints(
-                                    minHeight: 58,
-                                  ),
+                                  constraints:
+                                  const BoxConstraints(minHeight: 58),
                                   padding: const EdgeInsets.symmetric(
                                     horizontal: 12,
                                     vertical: 7,
@@ -932,6 +942,8 @@ class _MedicationScreenState extends State<MedicationScreen> {
                                         child: Column(
                                           crossAxisAlignment:
                                           CrossAxisAlignment.start,
+                                          mainAxisAlignment:
+                                          MainAxisAlignment.center,
                                           children: [
                                             Text(
                                               'تفعيل التذكير',
@@ -943,7 +955,7 @@ class _MedicationScreenState extends State<MedicationScreen> {
                                             ),
                                             const SizedBox(height: 2),
                                             Text(
-                                              'للتذكير بوقت الدواء',
+                                              'للتذكير بأوقات تناول الدواء',
                                               style: TextStyle(
                                                 color: hintColor,
                                                 fontSize: 11,
@@ -969,7 +981,6 @@ class _MedicationScreenState extends State<MedicationScreen> {
 
                                 const SizedBox(height: 17),
 
-                                // ملاحظة
                                 Container(
                                   width: double.infinity,
                                   padding: const EdgeInsets.symmetric(
@@ -993,7 +1004,7 @@ class _MedicationScreenState extends State<MedicationScreen> {
                                       const SizedBox(width: 7),
                                       Flexible(
                                         child: Text(
-                                          'سجّل بيانات الدواء حسب المعلومات المعتمدة للطفل',
+                                          'سجّل بيانات الدواء حسب وصفة الطبيب المعتمدة للطفل',
                                           textAlign: TextAlign.center,
                                           style: TextStyle(
                                             fontSize: 13,
@@ -1022,6 +1033,40 @@ class _MedicationScreenState extends State<MedicationScreen> {
     );
   }
 
+  Widget _buildDropdown({
+    required String? value,
+    required List<String> values,
+    required String hint,
+    required IconData icon,
+    required Color primaryColor,
+    required Color borderColor,
+    required Color cardColor,
+    required ValueChanged<String?> onChanged,
+  }) {
+    return DropdownButtonFormField<String>(
+      key: ValueKey('$hint-${values.join('|')}'),
+      value: values.contains(value) ? value : null,
+      isExpanded: true,
+      dropdownColor: cardColor,
+      alignment: AlignmentDirectional.centerStart,
+      validator: (value) => value == null ? 'مطلوب' : null,
+      decoration: medicationDecoration(
+        icon: icon,
+        hint: '',
+        primaryColor: primaryColor,
+        borderColor: borderColor,
+      ),
+      hint: _RightText(hint, isHint: true),
+      items: values.map((item) {
+        return DropdownMenuItem<String>(
+          value: item,
+          child: _RightText(item),
+        );
+      }).toList(),
+      onChanged: isSaving ? null : onChanged,
+    );
+  }
+
   Widget _responsivePair({
     required bool isVerySmall,
     required Widget first,
@@ -1047,95 +1092,16 @@ class _MedicationScreenState extends State<MedicationScreen> {
     );
   }
 
-  Widget _buildDoseUnitField({
-    required Color primaryColor,
-    required Color borderColor,
-  }) {
-    final ThemeData theme = Theme.of(context);
-    final Color textColor = theme.colorScheme.onSurface;
-
-    if (isOtherDoseUnit) {
-      return TextFormField(
-        controller: customUnitController,
-        focusNode: customUnitFocusNode,
-        enabled: !isSaving,
-        autofocus: true,
-        textAlign: TextAlign.right,
-        style: TextStyle(color: textColor),
-        validator: validateDoseUnit,
-        autovalidateMode: AutovalidateMode.onUserInteraction,
-        decoration: medicationDecoration(
-          icon: Icons.scale_outlined,
-          hint: 'اكتب وحدة الجرعة',
-          primaryColor: primaryColor,
-          borderColor: borderColor,
-        ).copyWith(
-          suffixIcon: IconButton(
-            tooltip: 'الرجوع للخيارات',
-            onPressed: isSaving ? null : returnToDoseUnits,
-            icon: Icon(
-              Icons.keyboard_arrow_down_rounded,
-              color: textColor,
-            ),
-          ),
-        ),
-      );
-    }
-
-    return Directionality(
-      textDirection: TextDirection.rtl,
-      child: DropdownButtonFormField<String>(
-        value: selectedDoseUnit,
-        isExpanded: true,
-        dropdownColor: theme.cardColor,
-        alignment: AlignmentDirectional.centerStart,
-        validator: validateDoseUnit,
-        decoration: medicationDecoration(
-          icon: Icons.scale_outlined,
-          hint: '',
-          primaryColor: primaryColor,
-          borderColor: borderColor,
-        ),
-        hint: const _RightText(
-          'وحدة الجرعة',
-          isHint: true,
-        ),
-        items: [
-          ...doseUnits.map(
-                (unit) => DropdownMenuItem<String>(
-              value: unit,
-              child: _RightText(unit),
-            ),
-          ),
-          const DropdownMenuItem<String>(
-            value: 'أخرى',
-            child: _RightText('أخرى'),
-          ),
-        ],
-        onChanged: isSaving
-            ? null
-            : (value) {
-          if (value == 'أخرى') {
-            selectOtherDoseUnit();
-            return;
-          }
-
-          setState(() {
-            selectedDoseUnit = value;
-          });
-        },
-      ),
-    );
-  }
-
+  // One independent time picker for every dose.
   Widget _buildTimeField({
+    required int index,
     required Color primaryColor,
     required Color borderColor,
     required Color hintColor,
     required Color darkColor,
   }) {
     return InkWell(
-      onTap: isSaving ? null : selectMedicineTime,
+      onTap: isSaving ? null : () => selectMedicineTime(index),
       borderRadius: BorderRadius.circular(14),
       child: InputDecorator(
         decoration: medicationDecoration(
@@ -1143,16 +1109,35 @@ class _MedicationScreenState extends State<MedicationScreen> {
           hint: '',
           primaryColor: primaryColor,
           borderColor: borderColor,
-        ).copyWith(errorText: timeError),
-        child: Text(
-          selectedTime == null
-              ? 'وقت الدواء'
-              : formatTime(selectedTime),
-          textAlign: TextAlign.right,
-          style: TextStyle(
-            color: selectedTime == null ? hintColor : darkColor,
-            fontSize: 14,
-          ),
+        ).copyWith(
+          errorText: timeErrors[index],
+        ),
+        child: Row(
+          children: [
+            Expanded(
+              child: Text(
+                selectedTimes[index] == null
+                    ? 'وقت ${timeLabels[index]}'
+                    : formatTime(selectedTimes[index]),
+                textAlign: TextAlign.right,
+                style: TextStyle(
+                  color: selectedTimes[index] == null
+                      ? hintColor
+                      : darkColor,
+                  fontSize: 14,
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Text(
+              timeLabels[index],
+              style: TextStyle(
+                fontSize: 11,
+                color: primaryColor,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
         ),
       ),
     );
@@ -1173,7 +1158,9 @@ class _MedicationScreenState extends State<MedicationScreen> {
           hint: '',
           primaryColor: primaryColor,
           borderColor: borderColor,
-        ).copyWith(errorText: startDateError),
+        ).copyWith(
+          errorText: startDateError,
+        ),
         child: Text(
           startDate == null
               ? 'تاريخ بدء الدواء'
@@ -1194,10 +1181,10 @@ class _MedicationScreenState extends State<MedicationScreen> {
     required Color primaryColor,
     required Color darkColor,
   }) {
-    final ThemeData theme = Theme.of(context);
-    final bool isDark = theme.brightness == Brightness.dark;
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
 
-    final Color secondaryTextColor = isDark
+    final secondaryTextColor = isDark
         ? darkColor.withOpacity(0.65)
         : const Color(0xff6D7A80);
 
@@ -1235,9 +1222,7 @@ class _MedicationScreenState extends State<MedicationScreen> {
                   size: 26,
                 ),
               ),
-
               const SizedBox(width: 11),
-
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -1250,6 +1235,16 @@ class _MedicationScreenState extends State<MedicationScreen> {
                         color: darkColor,
                       ),
                     ),
+                    if (medication.insulinType != null) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        'نوع الأنسولين: ${medication.insulinType}',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: secondaryTextColor,
+                        ),
+                      ),
+                    ],
                     const SizedBox(height: 4),
                     Text(
                       'الجرعة: ${medication.dose} ${medication.doseUnit}',
@@ -1261,24 +1256,18 @@ class _MedicationScreenState extends State<MedicationScreen> {
                   ],
                 ),
               ),
-
-              // زر تعديل الدواء
               IconButton(
-                onPressed: isSaving
-                    ? null
-                    : () => editMedication(index),
+                onPressed:
+                isSaving ? null : () => editMedication(index),
                 tooltip: 'تعديل بيانات الدواء',
                 icon: const Icon(
                   Icons.edit_outlined,
                   color: Color(0xff419F98),
                 ),
               ),
-
-              // زر حذف الدواء
               IconButton(
-                onPressed: isSaving
-                    ? null
-                    : () => deleteMedication(index),
+                onPressed:
+                isSaving ? null : () => deleteMedication(index),
                 tooltip: 'حذف الدواء',
                 icon: const Icon(
                   Icons.delete_outline_rounded,
@@ -1299,16 +1288,23 @@ class _MedicationScreenState extends State<MedicationScreen> {
                 text: medication.repeat,
                 primaryColor: primaryColor,
               ),
-              medicationDetail(
-                icon: Icons.access_time_rounded,
-                text: medication.time,
-                primaryColor: primaryColor,
+
+              // Display every saved dose time.
+              ...List.generate(
+                medication.times.length,
+                    (index) => medicationDetail(
+                  icon: Icons.access_time_rounded,
+                  text: '${timeLabels[index]}: ${medication.times[index]}',
+                  primaryColor: primaryColor,
+                ),
               ),
+
               medicationDetail(
                 icon: Icons.calendar_month_outlined,
                 text: 'من ${medication.startDate}',
                 primaryColor: primaryColor,
               ),
+
               medicationDetail(
                 icon: medication.reminderEnabled
                     ? Icons.notifications_active_outlined
@@ -1330,11 +1326,10 @@ class _MedicationScreenState extends State<MedicationScreen> {
     required String text,
     required Color primaryColor,
   }) {
-    final ThemeData theme = Theme.of(context);
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
 
-    final bool isDark = theme.brightness == Brightness.dark;
-
-    final Color textColor = isDark
+    final textColor = isDark
         ? theme.colorScheme.onSurface.withOpacity(0.70)
         : const Color(0xff5C6E75);
 
@@ -1352,11 +1347,7 @@ class _MedicationScreenState extends State<MedicationScreen> {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(
-            icon,
-            size: 16,
-            color: primaryColor,
-          ),
+          Icon(icon, size: 16, color: primaryColor),
           const SizedBox(width: 5),
           Text(
             text,
@@ -1377,11 +1368,10 @@ class _MedicationScreenState extends State<MedicationScreen> {
     required Color primaryColor,
     required Color borderColor,
   }) {
-    final ThemeData theme = Theme.of(context);
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
 
-    final bool isDark = theme.brightness == Brightness.dark;
-
-    final Color hintColor = isDark
+    final hintColor = isDark
         ? theme.colorScheme.onSurface.withOpacity(0.52)
         : const Color(0xff8A989D);
 
@@ -1440,27 +1430,32 @@ class _MedicationScreenState extends State<MedicationScreen> {
 }
 
 class SavedMedication {
+  final String medicineSelection;
   final String name;
+  final String? insulinType;
   final String dose;
   final String doseUnit;
   final String repeat;
-  final String time;
+
+  // Multiple times instead of one time.
+  final List<String> times;
   final String startDate;
   final bool reminderEnabled;
 
-  // الاحتفاظ بالقيم الأصلية لاستخدامها عند تعديل الدواء.
-  final TimeOfDay medicineTime;
+  final List<TimeOfDay> medicineTimes;
   final DateTime startDateValue;
 
   const SavedMedication({
+    required this.medicineSelection,
     required this.name,
+    required this.insulinType,
     required this.dose,
     required this.doseUnit,
     required this.repeat,
-    required this.time,
+    required this.times,
     required this.startDate,
     required this.reminderEnabled,
-    required this.medicineTime,
+    required this.medicineTimes,
     required this.startDateValue,
   });
 }
@@ -1476,11 +1471,10 @@ class _RightText extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final ThemeData theme = Theme.of(context);
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
 
-    final bool isDark = theme.brightness == Brightness.dark;
-
-    final Color textColor = isHint
+    final textColor = isHint
         ? (isDark
         ? theme.colorScheme.onSurface.withOpacity(0.52)
         : const Color(0xff8A989D))

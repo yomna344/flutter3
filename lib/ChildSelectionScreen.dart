@@ -1,3 +1,4 @@
+
 import 'package:flutter/material.dart';
 
 import 'ChildStore.dart';
@@ -17,10 +18,72 @@ class _ChildSelectionScreenState
   bool openingChild = false;
   bool isAddingChild = false;
 
+  // حالة جلب الأطفال من Laravel
+  bool isLoadingChildren = true;
+  String? loadingError;
+
+  // =====================================
+  // عند فتح الشاشة
+  // =====================================
+
+  @override
+  void initState() {
+    super.initState();
+
+    // جلب أطفال ولي الأمر من MySQL
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        loadChildren();
+      }
+    });
+  }
+
+  // =====================================
+  // جلب الأطفال من Laravel
+  // =====================================
+
+  Future<void> loadChildren() async {
+    if (!mounted) return;
+
+    setState(() {
+      isLoadingChildren = true;
+      loadingError = null;
+    });
+
+    try {
+      // GET /api/children
+      await ChildStore.instance.loadChildrenFromApi();
+    } catch (error) {
+      if (!mounted) return;
+
+      setState(() {
+        loadingError = error
+            .toString()
+            .replaceFirst('Exception: ', '');
+      });
+    } finally {
+      if (mounted) {
+        setState(() {
+          isLoadingChildren = false;
+        });
+      }
+    }
+  }
+
+  // =====================================
+  // فتح الطفل المختار
+  // =====================================
+
   void openChild(ChildModel child) {
-    if (openingChild || !mounted) return;
+    if (openingChild ||
+        isLoadingChildren ||
+        !mounted) {
+      return;
+    }
 
     openingChild = true;
+
+    // تحديد الطفل الحالي في ChildStore
     ChildStore.instance.selectChild(child.localId);
 
     Navigator.pushReplacement(
@@ -36,29 +99,50 @@ class _ChildSelectionScreenState
     );
   }
 
+  // =====================================
+  // إضافة طفل جديد
+  // =====================================
+
   Future<void> addChild() async {
-    if (isAddingChild) return;
+    if (isAddingChild ||
+        isLoadingChildren ||
+        openingChild) {
+      return;
+    }
 
     setState(() {
       isAddingChild = true;
     });
 
-    await Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => const ChildInfoScreen(
-          showBackButton: true,
-          returnToProfileAfterSave: true,
+    try {
+      // فتح شاشة إضافة الطفل
+      await Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => const ChildInfoScreen(
+            showBackButton: true,
+            returnToProfileAfterSave: true,
+          ),
         ),
-      ),
-    );
+      );
 
-    if (!mounted) return;
+      if (!mounted) return;
 
-    setState(() {
-      isAddingChild = false;
-    });
+      // إعادة جلب الأطفال من Laravel
+      // حتى يظهر الطفل الجديد في القائمة
+      await loadChildren();
+    } finally {
+      if (mounted) {
+        setState(() {
+          isAddingChild = false;
+        });
+      }
+    }
   }
+
+  // =====================================
+  // Main Screen
+  // =====================================
 
   @override
   Widget build(BuildContext context) {
@@ -73,14 +157,98 @@ class _ChildSelectionScreenState
           title: const Text('اختيار الطفل'),
           automaticallyImplyLeading: false,
         ),
+
         body: AnimatedBuilder(
           animation: ChildStore.instance,
           builder: (context, _) {
             final children = ChildStore.instance.children;
 
+            // =====================================
+            // Loading
+            // =====================================
+
+            if (isLoadingChildren) {
+              return Center(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    CircularProgressIndicator(
+                      color: primaryColor,
+                    ),
+
+                    const SizedBox(height: 16),
+
+                    Text(
+                      'جاري تحميل بيانات الأطفال...',
+                      style: TextStyle(
+                        color: textColor,
+                        fontSize: 15,
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            }
+
+            // =====================================
+            // Error
+            // =====================================
+
+            if (loadingError != null) {
+              return Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.error_outline_rounded,
+                        size: 65,
+                        color: primaryColor,
+                      ),
+
+                      const SizedBox(height: 16),
+
+                      Text(
+                        loadingError!,
+                        style: TextStyle(
+                          fontSize: 15,
+                          color: textColor,
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+
+                      const SizedBox(height: 20),
+
+                      ElevatedButton.icon(
+                        onPressed: loadChildren,
+                        icon: const Icon(
+                          Icons.refresh_rounded,
+                        ),
+                        label: const Text(
+                          'إعادة المحاولة',
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            }
+
+            // =====================================
+            // طفل واحد: فتحه تلقائيًا
+            // =====================================
+
             if (children.length == 1 && !openingChild) {
-              WidgetsBinding.instance.addPostFrameCallback((_) {
-                if (!mounted || openingChild) return;
+              WidgetsBinding.instance
+                  .addPostFrameCallback((_) {
+                if (!mounted ||
+                    openingChild ||
+                    isLoadingChildren ||
+                    loadingError != null) {
+                  return;
+                }
+
                 openChild(children.first);
               });
 
@@ -88,6 +256,10 @@ class _ChildSelectionScreenState
                 child: CircularProgressIndicator(),
               );
             }
+
+            // =====================================
+            // لا يوجد أطفال
+            // =====================================
 
             if (children.isEmpty) {
               return Center(
@@ -101,7 +273,9 @@ class _ChildSelectionScreenState
                         size: 70,
                         color: primaryColor,
                       ),
+
                       const SizedBox(height: 16),
+
                       Text(
                         'أضيفي بيانات طفلك للبدء',
                         style: TextStyle(
@@ -111,18 +285,28 @@ class _ChildSelectionScreenState
                         ),
                         textAlign: TextAlign.center,
                       ),
+
                       const SizedBox(height: 20),
+
                       ElevatedButton.icon(
                         onPressed:
                         isAddingChild ? null : addChild,
-                        icon: const Icon(Icons.person_add),
-                        label: const Text('إضافة طفل'),
+                        icon: const Icon(
+                          Icons.person_add,
+                        ),
+                        label: const Text(
+                          'إضافة طفل',
+                        ),
                       ),
                     ],
                   ),
                 ),
               );
             }
+
+            // =====================================
+            // قائمة الأطفال
+            // =====================================
 
             return ListView(
               padding: const EdgeInsets.all(20),
@@ -135,25 +319,36 @@ class _ChildSelectionScreenState
                     color: textColor,
                   ),
                 ),
+
                 const SizedBox(height: 8),
+
                 Text(
                   'اختاري الطفل لعرض بياناته الصحية',
                   style: TextStyle(
                     color: textColor.withOpacity(0.7),
                   ),
                 ),
+
                 const SizedBox(height: 20),
+
+                // =====================================
+                // Child Cards
+                // =====================================
 
                 ...children.map((child) {
                   return Card(
                     color: theme.cardColor,
-                    margin: const EdgeInsets.only(bottom: 14),
+                    margin: const EdgeInsets.only(
+                      bottom: 14,
+                    ),
                     shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16),
+                      borderRadius:
+                      BorderRadius.circular(16),
                     ),
                     child: ListTile(
                       contentPadding:
                       const EdgeInsets.all(12),
+
                       leading: CircleAvatar(
                         radius: 28,
                         backgroundColor:
@@ -164,6 +359,7 @@ class _ChildSelectionScreenState
                           size: 32,
                         ),
                       ),
+
                       title: Text(
                         child.fullName,
                         style: TextStyle(
@@ -171,14 +367,17 @@ class _ChildSelectionScreenState
                           color: textColor,
                         ),
                       ),
+
                       subtitle: Text(
                         '${child.gender} • '
                             '${child.birthDate.year}',
                       ),
+
                       trailing: Icon(
                         Icons.chevron_left_rounded,
                         color: primaryColor,
                       ),
+
                       onTap: openingChild
                           ? null
                           : () => openChild(child),
@@ -187,13 +386,20 @@ class _ChildSelectionScreenState
                 }),
 
                 const SizedBox(height: 10),
+
+                // =====================================
+                // Add Another Child
+                // =====================================
+
                 OutlinedButton.icon(
                   onPressed:
                   isAddingChild ? null : addChild,
                   icon: const Icon(
                     Icons.person_add_alt_1,
                   ),
-                  label: const Text('إضافة طفل'),
+                  label: const Text(
+                    'إضافة طفل',
+                  ),
                 ),
               ],
             );

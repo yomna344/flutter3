@@ -3,10 +3,9 @@ import 'package:flutter/material.dart';
 import 'GlucoseRecordsScreen.dart';
 import 'MealRecordsScreen.dart';
 import 'ActivityRecordsScreen.dart';
-import 'GrowthRecordsScreen.dart';
 import 'MedicationRecordsScreen.dart';
 import 'MedicalExamRecordsScreen.dart';
-import 'AppointmentRecordsScreen.dart';
+import 'RemindersRecordScreen.dart';
 
 class RecordsScreen extends StatelessWidget {
   const RecordsScreen({super.key});
@@ -18,8 +17,7 @@ class RecordsScreen extends StatelessWidget {
     final bool isDark =
         theme.brightness == Brightness.dark;
 
-    final Color primaryColor =
-        theme.primaryColor;
+    final Color primaryColor = theme.primaryColor;
 
     final Color textColor = isDark
         ? Colors.white
@@ -35,43 +33,31 @@ class RecordsScreen extends StatelessWidget {
           textDirection: TextDirection.rtl,
           child: LayoutBuilder(
             builder: (context, constraints) {
-              final double width =
-                  constraints.maxWidth;
+              final double width = constraints.maxWidth;
 
-              final bool isVerySmall =
-                  width < 390;
+              final bool isVerySmall = width < 390;
+              final bool isTablet = width >= 600;
 
-              final bool isTablet =
-                  width >= 600;
-
-              final double horizontalPadding =
-              isVerySmall
+              final double horizontalPadding = isVerySmall
                   ? 14
                   : isTablet
                   ? 36
                   : 20;
 
               return SingleChildScrollView(
-                physics:
-                const BouncingScrollPhysics(),
+                physics: const BouncingScrollPhysics(),
                 padding: EdgeInsets.symmetric(
-                  horizontal:
-                  horizontalPadding,
+                  horizontal: horizontalPadding,
                   vertical: 18,
                 ),
                 child: Center(
                   child: ConstrainedBox(
-                    constraints:
-                    const BoxConstraints(
+                    constraints: const BoxConstraints(
                       maxWidth: 760,
                     ),
                     child: Column(
-                      crossAxisAlignment:
-                      CrossAxisAlignment.start,
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        // =========================
-// Header
-// =========================
                         SizedBox(
                           height: 48,
                           child: Center(
@@ -87,40 +73,28 @@ class RecordsScreen extends StatelessWidget {
                           ),
                         ),
 
-
-                        const SizedBox(
-                          height: 12,
-                        ),
+                        const SizedBox(height: 12),
 
                         Padding(
-                          padding:
-                          const EdgeInsets
-                              .symmetric(
+                          padding: const EdgeInsets.symmetric(
                             horizontal: 6,
                           ),
                           child: Text(
                             'عرض ومتابعة السجلات السابقة',
                             style: TextStyle(
                               fontSize: 14,
-                              fontWeight:
-                              FontWeight.w500,
-                              color:
-                              secondaryTextColor,
+                              fontWeight: FontWeight.w500,
+                              color: secondaryTextColor,
                             ),
                           ),
                         ),
 
-                        const SizedBox(
-                          height: 26,
-                        ),
+                        const SizedBox(height: 26),
 
-                        // =========================
-                        // Glucose
-                        // =========================
+                        // قراءات السكر
                         _recordCard(
                           context,
-                          icon:
-                          Icons.water_drop_rounded,
+                          icon: Icons.water_drop_rounded,
                           title: 'قراءات السكر',
                           description:
                           'عرض قراءات السكر المسجلة سابقًا',
@@ -135,17 +109,12 @@ class RecordsScreen extends StatelessWidget {
                           },
                         ),
 
-                        const SizedBox(
-                          height: 12,
-                        ),
+                        const SizedBox(height: 12),
 
-                        // =========================
-                        // Meals
-                        // =========================
+                        // الوجبات
                         _recordCard(
                           context,
-                          icon:
-                          Icons.restaurant_rounded,
+                          icon: Icons.restaurant_rounded,
                           title: 'الوجبات',
                           description:
                           'عرض الوجبات المسجلة سابقًا',
@@ -160,17 +129,12 @@ class RecordsScreen extends StatelessWidget {
                           },
                         ),
 
-                        const SizedBox(
-                          height: 12,
-                        ),
+                        const SizedBox(height: 12),
 
-                        // =========================
-                        // Activity
-                        // =========================
+                        // الأنشطة
                         _recordCard(
                           context,
-                          icon: Icons
-                              .directions_run_rounded,
+                          icon: Icons.directions_run_rounded,
                           title: 'الأنشطة',
                           description:
                           'عرض الأنشطة المسجلة سابقًا',
@@ -185,42 +149,12 @@ class RecordsScreen extends StatelessWidget {
                           },
                         ),
 
-                        const SizedBox(
-                          height: 12,
-                        ),
+                        const SizedBox(height: 12),
 
-                        // =========================
-                        // Growth
-                        // =========================
+                        // الأدوية
                         _recordCard(
                           context,
-                          icon:
-                          Icons.height_rounded,
-                          title: 'النمو',
-                          description:
-                          'عرض قياسات النمو السابقة',
-                          onTap: () {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (context) =>
-                                const GrowthRecordsScreen(),
-                              ),
-                            );
-                          },
-                        ),
-
-                        const SizedBox(
-                          height: 12,
-                        ),
-
-                        // =========================
-                        // Medication
-                        // =========================
-                        _recordCard(
-                          context,
-                          icon: Icons
-                              .medication_rounded,
+                          icon: Icons.medication_rounded,
                           title: 'الأدوية',
                           description:
                           'عرض سجلات الأدوية السابقة',
@@ -235,17 +169,12 @@ class RecordsScreen extends StatelessWidget {
                           },
                         ),
 
-                        const SizedBox(
-                          height: 12,
-                        ),
+                        const SizedBox(height: 12),
 
-                        // =========================
-                        // Medical Exams
-                        // =========================
+                        // الفحوصات الطبية
                         _recordCard(
                           context,
-                          icon: Icons
-                              .health_and_safety_rounded,
+                          icon: Icons.health_and_safety_rounded,
                           title: 'الفحوصات',
                           description:
                           'عرض الفحوصات الطبية المسجلة',
@@ -260,34 +189,27 @@ class RecordsScreen extends StatelessWidget {
                           },
                         ),
 
-                        const SizedBox(
-                          height: 12,
-                        ),
+                        const SizedBox(height: 12),
 
-                        // =========================
-                        // Appointments
-                        // =========================
+                        // التذكيرات
                         _recordCard(
                           context,
-                          icon: Icons
-                              .calendar_month_rounded,
-                          title: 'المواعيد',
+                          icon: Icons.calendar_month_rounded,
+                          title: 'التذكيرات',
                           description:
-                          'عرض المواعيد السابقة والقادمة',
+                          'عرض التذكيرات السابقة والقادمة',
                           onTap: () {
                             Navigator.push(
                               context,
                               MaterialPageRoute(
                                 builder: (context) =>
-                                const AppointmentRecordsScreen(),
+                                const RemindersRecordsScreen(),
                               ),
                             );
                           },
                         ),
 
-                        const SizedBox(
-                          height: 24,
-                        ),
+                        const SizedBox(height: 24),
                       ],
                     ),
                   ),
@@ -300,9 +222,7 @@ class RecordsScreen extends StatelessWidget {
     );
   }
 
-  // =========================
-  // Record Card
-  // =========================
+  // بطاقة السجل
   Widget _recordCard(
       BuildContext context, {
         required IconData icon,
@@ -310,14 +230,12 @@ class RecordsScreen extends StatelessWidget {
         required String description,
         required VoidCallback onTap,
       }) {
-    final ThemeData theme =
-    Theme.of(context);
+    final ThemeData theme = Theme.of(context);
 
     final bool isDark =
         theme.brightness == Brightness.dark;
 
-    final Color primaryColor =
-        theme.primaryColor;
+    final Color primaryColor = theme.primaryColor;
 
     final Color textColor = isDark
         ? Colors.white
@@ -337,41 +255,30 @@ class RecordsScreen extends StatelessWidget {
 
     return Material(
       color: cardColor,
-      borderRadius:
-      BorderRadius.circular(18),
+      borderRadius: BorderRadius.circular(18),
       child: InkWell(
         onTap: onTap,
-        borderRadius:
-        BorderRadius.circular(18),
+        borderRadius: BorderRadius.circular(18),
         child: Container(
           width: double.infinity,
-          padding:
-          const EdgeInsets.all(16),
+          padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
             color: cardColor,
-            borderRadius:
-            BorderRadius.circular(18),
+            borderRadius: BorderRadius.circular(18),
             border: Border.all(
               color: borderColor,
             ),
           ),
           child: Row(
             children: [
-              // =========================
-              // Icon
-              // =========================
               Container(
                 width: 48,
                 height: 48,
                 decoration: BoxDecoration(
-                  color: primaryColor
-                      .withOpacity(
+                  color: primaryColor.withOpacity(
                     isDark ? 0.14 : 0.10,
                   ),
-                  borderRadius:
-                  BorderRadius.circular(
-                    14,
-                  ),
+                  borderRadius: BorderRadius.circular(14),
                 ),
                 child: Icon(
                   icon,
@@ -380,58 +287,41 @@ class RecordsScreen extends StatelessWidget {
                 ),
               ),
 
-              const SizedBox(
-                width: 12,
-              ),
+              const SizedBox(width: 12),
 
-              // =========================
-              // Text
-              // =========================
               Expanded(
                 child: Column(
-                  crossAxisAlignment:
-                  CrossAxisAlignment.start,
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
                       title,
                       style: TextStyle(
                         fontSize: 16,
-                        fontWeight:
-                        FontWeight.bold,
+                        fontWeight: FontWeight.bold,
                         color: textColor,
                       ),
                     ),
 
-                    const SizedBox(
-                      height: 5,
-                    ),
+                    const SizedBox(height: 5),
 
                     Text(
                       description,
                       style: TextStyle(
                         fontSize: 12.5,
                         height: 1.5,
-                        color:
-                        secondaryTextColor,
+                        color: secondaryTextColor,
                       ),
                     ),
                   ],
                 ),
               ),
 
-              const SizedBox(
-                width: 10,
-              ),
+              const SizedBox(width: 10),
 
-              // =========================
-              // Card Arrow
-              // =========================
               Icon(
-                Icons
-                    .arrow_forward_ios_rounded,
+                Icons.arrow_forward_ios_rounded,
                 size: 16,
-                color: textColor
-                    .withOpacity(0.40),
+                color: textColor.withOpacity(0.40),
               ),
             ],
           ),

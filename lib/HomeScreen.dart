@@ -4,23 +4,22 @@ import 'package:flutter/material.dart';
 import 'ReportsScreen.dart';
 import 'ActivityScreen.dart';
 import 'MealScreen.dart';
-import 'GrowthScreen.dart';
 import 'MedicationScreen.dart';
 import 'MedicalExamScreen.dart';
 import 'GlucoseReadingScreen.dart';
-import 'MedicalAppointmentScreen.dart';
+import 'RemindersScreen.dart';
 import 'ProfileScreen.dart';
 import 'NotificationScreen.dart';
 import 'RecordsScreen.dart';
+import 'ChildStore.dart';
 
 enum HomeAction {
   activity,
   meals,
   glucose,
-  growth,
   medication,
   medicalExam,
-  appointments,
+  reminders,
 }
 
 class HomeScreen extends StatefulWidget {
@@ -36,7 +35,7 @@ class HomeScreen extends StatefulWidget {
     required this.birthDate,
     required this.gender,
     this.childImagePath,
-    this.showBottomNavigationBar=true,
+    this.showBottomNavigationBar = true,
   });
 
   @override
@@ -44,9 +43,8 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  int selectedTabIndex= 0;
   bool dailyHealthExpanded = true;
-  bool growthTreatmentExpanded = true;
+  bool treatmentExpanded = true;
   bool medicalFollowUpExpanded = true;
 
   String? currentChildImagePath;
@@ -55,6 +53,24 @@ class _HomeScreenState extends State<HomeScreen> {
   void initState() {
     super.initState();
     currentChildImagePath = widget.childImagePath;
+
+    ChildStore.instance.addListener(_onChildChanged);
+  }
+
+  void _onChildChanged() {
+    if (!mounted) return;
+
+    setState(() {
+      currentChildImagePath =
+          ChildStore.instance.selectedChild?.imagePath ??
+              widget.childImagePath;
+    });
+  }
+
+  @override
+  void dispose() {
+    ChildStore.instance.removeListener(_onChildChanged);
+    super.dispose();
   }
 
   int calculateAge(DateTime dateOfBirth) {
@@ -130,9 +146,7 @@ class _HomeScreenState extends State<HomeScreen> {
                           size: 27,
                         ),
                       ),
-
                       const SizedBox(width: 12),
-
                       Expanded(
                         child: Text(
                           'نصيحة اليوم',
@@ -143,11 +157,8 @@ class _HomeScreenState extends State<HomeScreen> {
                           ),
                         ),
                       ),
-
                       IconButton(
-                        onPressed: () {
-                          Navigator.pop(context);
-                        },
+                        onPressed: () => Navigator.pop(context),
                         icon: Icon(
                           Icons.close_rounded,
                           color: textColor.withOpacity(0.65),
@@ -155,9 +166,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       ),
                     ],
                   ),
-
                   const SizedBox(height: 15),
-
                   Text(
                     'احرص على تسجيل القراءات والوجبات بانتظام لتكوين سجل صحي أوضح لطفلك.',
                     style: TextStyle(
@@ -166,9 +175,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       color: textColor.withOpacity(0.75),
                     ),
                   ),
-
                   const SizedBox(height: 15),
-
                   Container(
                     width: double.infinity,
                     padding: const EdgeInsets.all(12),
@@ -238,20 +245,6 @@ class _HomeScreenState extends State<HomeScreen> {
         );
         break;
 
-      case HomeAction.growth:
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (context) => GrowthScreen(
-              childName: widget.childName,
-              birthDate: widget.birthDate,
-              gender: widget.gender,
-              childImagePath: widget.childImagePath,
-            ),
-          ),
-        );
-        break;
-
       case HomeAction.medication:
         Navigator.push(
           context,
@@ -280,11 +273,11 @@ class _HomeScreenState extends State<HomeScreen> {
         );
         break;
 
-      case HomeAction.appointments:
+      case HomeAction.reminders:
         Navigator.push(
           context,
           MaterialPageRoute(
-            builder: (context) => MedicalAppointmentScreen(
+            builder: (context) => RemindersScreen(
               childName: widget.childName,
               birthDate: widget.birthDate,
               gender: widget.gender,
@@ -299,7 +292,6 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   Widget build(BuildContext context) {
     final Color primaryColor = Theme.of(context).primaryColor;
-
     final int childAge = calculateAge(widget.birthDate);
 
     return Scaffold(
@@ -310,10 +302,8 @@ class _HomeScreenState extends State<HomeScreen> {
             final double screenHeight = constraints.maxHeight;
 
             final bool isVerySmall = screenWidth < 390;
-
             final bool isSmallScreen =
                 screenWidth < 430 || screenHeight < 650;
-
             final bool isTablet = screenWidth >= 600;
 
             final double horizontalPadding = isVerySmall
@@ -335,9 +325,8 @@ class _HomeScreenState extends State<HomeScreen> {
                       ),
                       child: Center(
                         child: ConstrainedBox(
-                          constraints: const BoxConstraints(
-                            maxWidth: 820,
-                          ),
+                          constraints:
+                          const BoxConstraints(maxWidth: 820),
                           child: Column(
                             children: [
                               _buildHeader(
@@ -361,6 +350,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                 height: isSmallScreen ? 22 : 28,
                               ),
 
+                              // القسم الأول: الصحة اليومية
                               collapsibleSection(
                                 title: 'الصحة اليومية',
                                 isExpanded: dailyHealthExpanded,
@@ -386,35 +376,29 @@ class _HomeScreenState extends State<HomeScreen> {
                                     iconColor: Color(0xff469E55),
                                     action: HomeAction.meals,
                                   ),
+                                ],
+                              ),
+
+                              const SizedBox(height: 22),
+
+                              // القسم الثاني: السكر والأدوية
+                              collapsibleSection(
+                                title: 'السكر والأدوية',
+                                isExpanded: treatmentExpanded,
+                                isVerySmall: isVerySmall,
+                                onTap: () {
+                                  setState(() {
+                                    treatmentExpanded =
+                                    !treatmentExpanded;
+                                  });
+                                },
+                                items: const [
                                   HomeItem(
                                     title: 'قراءة السكر',
                                     subtitle: 'سجل القراءات',
                                     icon: Icons.bloodtype_rounded,
                                     iconColor: Color(0xffD95C5C),
                                     action: HomeAction.glucose,
-                                  ),
-                                ],
-                              ),
-
-                              const SizedBox(height: 22),
-
-                              collapsibleSection(
-                                title: 'العلاج والنمو',
-                                isExpanded: growthTreatmentExpanded,
-                                isVerySmall: isVerySmall,
-                                onTap: () {
-                                  setState(() {
-                                    growthTreatmentExpanded =
-                                    !growthTreatmentExpanded;
-                                  });
-                                },
-                                items: const [
-                                  HomeItem(
-                                    title: 'سجل النمو',
-                                    subtitle: 'تتبع الطول والوزن',
-                                    icon: Icons.straighten_rounded,
-                                    iconColor: Color(0xff35A89C),
-                                    action: HomeAction.growth,
                                   ),
                                   HomeItem(
                                     title: 'الأدوية',
@@ -428,6 +412,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
                               const SizedBox(height: 22),
 
+                              // القسم الثالث: المتابعة الطبية
                               collapsibleSection(
                                 title: 'المتابعة الطبية',
                                 isExpanded: medicalFollowUpExpanded,
@@ -442,16 +427,18 @@ class _HomeScreenState extends State<HomeScreen> {
                                   HomeItem(
                                     title: 'الفحوصات الطبية',
                                     subtitle: 'سجل الفحوصات',
-                                    icon: Icons.medical_services_rounded,
+                                    icon:
+                                    Icons.medical_services_rounded,
                                     iconColor: Color(0xff6E52A8),
                                     action: HomeAction.medicalExam,
                                   ),
                                   HomeItem(
-                                    title: 'المواعيد',
-                                    subtitle: 'المواعيد القادمة',
-                                    icon: Icons.calendar_month_rounded,
+                                    title: 'التذكيرات',
+                                    subtitle: 'إضافة وعرض التذكيرات',
+                                    icon:
+                                    Icons.notifications_active_outlined,
                                     iconColor: Color(0xffB74A42),
-                                    action: HomeAction.appointments,
+                                    action: HomeAction.reminders,
                                   ),
                                 ],
                               ),
@@ -464,8 +451,11 @@ class _HomeScreenState extends State<HomeScreen> {
                     ),
                   ),
 
-                  if(widget.showBottomNavigationBar)
-                    bottomNavigationBar(primaryColor, isVerySmall),
+                  if (widget.showBottomNavigationBar)
+                    bottomNavigationBar(
+                      primaryColor,
+                      isVerySmall,
+                    ),
                 ],
               ),
             );
@@ -502,9 +492,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   color: textColor,
                 ),
               ),
-
               const SizedBox(height: 4),
-
               Text(
                 'تابع صحة طفلك بسهولة',
                 style: TextStyle(
@@ -541,7 +529,6 @@ class _HomeScreenState extends State<HomeScreen> {
                 );
               },
             ),
-
             Positioned(
               top: 6,
               right: 7,
@@ -600,7 +587,6 @@ class _HomeScreenState extends State<HomeScreen> {
         ? 105
         : 92;
 
-    // عرض الصورة المختارة، وإذا تعذر تحميلها نعرض الأيقونة الافتراضية.
     final Widget defaultChildImage = Icon(
       widget.gender == 'بنت'
           ? Icons.face_3_rounded
@@ -631,9 +617,7 @@ class _HomeScreenState extends State<HomeScreen> {
           height: imageSize,
           fit: BoxFit.cover,
           errorBuilder: (context, error, stackTrace) {
-            return Center(
-              child: defaultChildImage,
-            );
+            return Center(child: defaultChildImage);
           },
         ),
       ),
@@ -646,9 +630,8 @@ class _HomeScreenState extends State<HomeScreen> {
       children: [
         Text(
           widget.childName,
-          textAlign: isVerySmall
-              ? TextAlign.center
-              : TextAlign.start,
+          textAlign:
+          isVerySmall ? TextAlign.center : TextAlign.start,
           style: TextStyle(
             fontSize: isVerySmall
                 ? 22
@@ -757,9 +740,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     color: textColor,
                   ),
                 ),
-
                 const SizedBox(width: 5),
-
                 AnimatedRotation(
                   duration: const Duration(milliseconds: 250),
                   turns: isExpanded ? 0 : 0.5,
@@ -795,56 +776,27 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  // إصلاح عرض البطاقات: ارتفاعها يتحدد من محتواها
+  // بدون stretch أو ارتفاع غير محدود.
   Widget _buildSectionItems(
       List<HomeItem> items,
       bool isVerySmall,
       ) {
     return LayoutBuilder(
       builder: (context, constraints) {
-        if (isVerySmall) {
-          final double itemWidth =
-              (constraints.maxWidth - 8) / 2;
+        const double spacing = 8;
 
-          return Wrap(
-            alignment: WrapAlignment.center,
-            spacing: 8,
-            runSpacing: 10,
-            children: items.map((item) {
-              return SizedBox(
-                width: itemWidth,
-                child: sectionItem(item),
-              );
-            }).toList(),
-          );
-        }
+        final double itemWidth =
+            (constraints.maxWidth - spacing) / 2;
 
-        if (items.length == 2) {
-          final double itemWidth =
-              (constraints.maxWidth - 24) / 2;
-
-          return Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              SizedBox(
-                width: itemWidth,
-                child: sectionItem(items[0]),
-              ),
-
-              const SizedBox(width: 8),
-
-              SizedBox(
-                width: itemWidth,
-                child: sectionItem(items[1]),
-              ),
-            ],
-          );
-        }
-
-        return Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
+        return Wrap(
+          alignment: WrapAlignment.center,
+          crossAxisAlignment: WrapCrossAlignment.start,
+          spacing: spacing,
+          runSpacing: 10,
           children: items.map((item) {
-            return Expanded(
+            return SizedBox(
+              width: itemWidth,
               child: sectionItem(item),
             );
           }).toList(),
@@ -857,66 +809,61 @@ class _HomeScreenState extends State<HomeScreen> {
     final ThemeData theme = Theme.of(context);
     final Color textColor = theme.colorScheme.onSurface;
 
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 4),
-      child: InkWell(
-        onTap: () {
-          openHomeItem(item);
-        },
-        borderRadius: BorderRadius.circular(16),
-        child: Container(
-          width: double.infinity,
-          padding: const EdgeInsets.symmetric(
-            horizontal: 5,
-            vertical: 13,
+    return InkWell(
+      onTap: () => openHomeItem(item),
+      borderRadius: BorderRadius.circular(16),
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(
+          horizontal: 5,
+          vertical: 13,
+        ),
+        decoration: BoxDecoration(
+          color: theme.cardColor,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: textColor.withOpacity(0.12),
+            width: 1.2,
           ),
-          decoration: BoxDecoration(
-            color: theme.cardColor,
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(
-              color: textColor.withOpacity(0.12),
-              width: 1.2,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              item.icon,
+              color: item.iconColor,
+              size: 34,
             ),
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(
-                item.icon,
-                color: item.iconColor,
-                size: 34,
+
+            const SizedBox(height: 9),
+
+            Text(
+              item.title,
+              textAlign: TextAlign.center,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 13.5,
+                fontWeight: FontWeight.bold,
+                color: textColor,
               ),
+            ),
 
-              const SizedBox(height: 9),
+            const SizedBox(height: 4),
 
-              Text(
-                item.title,
-                textAlign: TextAlign.center,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  fontSize: 13.5,
-                  fontWeight: FontWeight.bold,
-                  color: textColor,
-                ),
+            Text(
+              item.subtitle,
+              textAlign: TextAlign.center,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 11,
+                height: 1.3,
+                color: textColor.withOpacity(0.50),
+                fontWeight: FontWeight.w500,
               ),
-
-              const SizedBox(height: 4),
-
-              Text(
-                item.subtitle,
-                textAlign: TextAlign.center,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  fontSize: 11,
-                  height: 1.3,
-                  color: textColor.withOpacity(0.50),
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
@@ -938,9 +885,7 @@ class _HomeScreenState extends State<HomeScreen> {
           size: 19,
           color: primaryColor,
         ),
-
         const SizedBox(width: 5),
-
         Text(
           text,
           style: TextStyle(
@@ -1018,7 +963,8 @@ class _HomeScreenState extends State<HomeScreen> {
                 Navigator.push(
                   context,
                   MaterialPageRoute(
-                    builder: (context) => const RecordsScreen(),
+                    builder: (context) =>
+                    const RecordsScreen(),
                   ),
                 );
               },
@@ -1031,7 +977,8 @@ class _HomeScreenState extends State<HomeScreen> {
               primaryColor: primaryColor,
               isVerySmall: isVerySmall,
               onTap: () async {
-                final result = await Navigator.push<Map<String, dynamic>>(
+                final result =
+                await Navigator.push<Map<String, dynamic>>(
                   context,
                   MaterialPageRoute(
                     builder: (context) => ProfileScreen(

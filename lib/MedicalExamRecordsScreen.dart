@@ -1,4 +1,9 @@
+import 'dart:convert';
+import 'dart:io';
+
 import 'package:flutter/material.dart';
+import 'package:open_filex/open_filex.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class MedicalExamRecordsScreen extends StatefulWidget {
   const MedicalExamRecordsScreen({super.key});
@@ -10,161 +15,165 @@ class MedicalExamRecordsScreen extends StatefulWidget {
 
 class _MedicalExamRecordsScreenState
     extends State<MedicalExamRecordsScreen> {
-  bool filterExpanded = false;
+  static const String recordsStorageKey =
+      'tinyguide_medical_exam_records';
 
-  DateTime? startDate;
-  DateTime? endDate;
+  bool isLoading = true;
+  bool isDeleting = false;
 
-  final List<MedicalExamRecord> allRecords = [
-    MedicalExamRecord(
-      examName: 'فحص السكر التراكمي',
-      result: 'تم تسجيل النتيجة',
-      date: DateTime(2026, 9, 1),
-      time: '10:00 ص',
-      note: 'مراجعة دورية',
-    ),
-    MedicalExamRecord(
-      examName: 'فحص الدم',
-      result: 'تم تسجيل النتيجة',
-      date: DateTime(2026, 8, 20),
-      time: '11:30 ص',
-      note: 'فحص دوري',
-    ),
-    MedicalExamRecord(
-      examName: 'فحص البول',
-      result: 'تم تسجيل النتيجة',
-      date: DateTime(2026, 8, 5),
-      time: '09:15 ص',
-      note: 'متابعة طبية',
-    ),
-  ];
-
-  List<MedicalExamRecord> filteredRecords = [];
+  List<MedicalExamRecord> allRecords = [];
 
   @override
   void initState() {
     super.initState();
-    filteredRecords = List.from(allRecords);
+    loadRecords();
   }
 
+  // =========================
+  // Load Records
+  // =========================
+
+  Future<void> loadRecords() async {
+    try {
+      final SharedPreferences preferences =
+      await SharedPreferences.getInstance();
+
+      final List<String> savedRecords =
+          preferences.getStringList(recordsStorageKey) ?? [];
+
+      final List<MedicalExamRecord> records = [];
+
+      for (final String item in savedRecords) {
+        try {
+          final Map<String, dynamic> data =
+          Map<String, dynamic>.from(jsonDecode(item));
+
+          final MedicalExamRecord record =
+          MedicalExamRecord.fromJson(data);
+
+          records.add(record);
+        } catch (e) {
+          debugPrint('Invalid medical exam record: $e');
+        }
+      }
+
+      records.sort(
+            (a, b) => b.date.compareTo(a.date),
+      );
+
+      if (!mounted) return;
+
+      setState(() {
+        allRecords = records;
+        isLoading = false;
+      });
+    } catch (e) {
+      debugPrint('Load medical exams error: $e');
+
+      if (!mounted) return;
+
+      setState(() {
+        isLoading = false;
+      });
+
+      showTemporaryMessage('تعذر تحميل سجلات الفحوصات');
+    }
+  }
+
+  // =========================
+  // Format Date & Time
+  // =========================
+
   String formatDate(DateTime date) {
-    final String day =
-    date.day.toString().padLeft(2, '0');
-    final String month =
-    date.month.toString().padLeft(2, '0');
+    final String day = date.day.toString().padLeft(2, '0');
+    final String month = date.month.toString().padLeft(2, '0');
 
     return '$day/$month/${date.year}';
   }
 
-  Future<void> pickStartDate() async {
-    final DateTime? pickedDate = await showDatePicker(
-      context: context,
-      initialDate: startDate ?? DateTime.now(),
-      firstDate: DateTime(2020),
-      lastDate: DateTime.now(),
-    );
+  String formatTime(DateTime date) {
+    final int hour = date.hour % 12 == 0
+        ? 12
+        : date.hour % 12;
 
-    if (pickedDate != null) {
-      setState(() {
-        startDate = pickedDate;
+    final String minute =
+    date.minute.toString().padLeft(2, '0');
 
-        if (endDate != null &&
-            endDate!.isBefore(startDate!)) {
-          endDate = null;
-        }
-      });
-    }
+    final String period = date.hour < 12 ? 'ص' : 'م';
+
+    return '${hour.toString().padLeft(2, '0')}:$minute $period';
   }
 
-  Future<void> pickEndDate() async {
-    if (startDate == null) {
-      ScaffoldMessenger.of(context)
-          .hideCurrentSnackBar();
+  // =========================
+  // Temporary Message
+  // =========================
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'اختاري تاريخ البداية أولًا',
-            textAlign: TextAlign.center,
-          ),
-          behavior: SnackBarBehavior.floating,
+  void showTemporaryMessage(String message) {
+    if (!mounted) return;
+
+    ScaffoldMessenger.of(context).hideCurrentSnackBar();
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          message,
+          textAlign: TextAlign.center,
         ),
+        behavior: SnackBarBehavior.floating,
+        duration: const Duration(seconds: 2),
+      ),
+    );
+  }
+
+  // =========================
+  // Open Attachment
+  // =========================
+
+  Future<void> openAttachment(
+      MedicalExamRecord record,
+      ) async {
+    try {
+      final File file = File(record.filePath);
+
+      if (!await file.exists()) {
+        showTemporaryMessage(
+          'الملف غير موجود على الجهاز',
+        );
+        return;
+      }
+
+      final OpenResult result =
+      await OpenFilex.open(record.filePath);
+
+      if (!mounted) return;
+
+      if (result.type != ResultType.done) {
+        showTemporaryMessage(
+          'تعذر فتح المرفق. تأكدي من وجود تطبيق يدعم نوع الملف.',
+        );
+      }
+    } catch (e) {
+      debugPrint('Open attachment error: $e');
+
+      showTemporaryMessage(
+        'حدث خطأ أثناء فتح المرفق',
       );
-
-      return;
-    }
-
-    final DateTime? pickedDate = await showDatePicker(
-      context: context,
-      initialDate: endDate ?? startDate!,
-      firstDate: startDate!,
-      lastDate: DateTime.now(),
-    );
-
-    if (pickedDate != null) {
-      setState(() {
-        endDate = pickedDate;
-      });
     }
   }
 
-  void applyFilter() {
-    if (startDate == null || endDate == null) {
-      ScaffoldMessenger.of(context)
-          .hideCurrentSnackBar();
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'اختاري تاريخ البداية والنهاية',
-            textAlign: TextAlign.center,
-          ),
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
-
-      return;
-    }
-
-    final DateTime normalizedStart = DateTime(
-      startDate!.year,
-      startDate!.month,
-      startDate!.day,
-    );
-
-    final DateTime normalizedEnd = DateTime(
-      endDate!.year,
-      endDate!.month,
-      endDate!.day,
-      23,
-      59,
-      59,
-    );
-
-    setState(() {
-      filteredRecords = allRecords.where((record) {
-        return !record.date.isBefore(normalizedStart) &&
-            !record.date.isAfter(normalizedEnd);
-      }).toList();
-    });
-  }
-
-  void resetFilter() {
-    setState(() {
-      startDate = null;
-      endDate = null;
-      filteredRecords = List.from(allRecords);
-    });
-  }
+  // =========================
+  // Confirm Delete
+  // =========================
 
   Future<void> confirmDelete(
       MedicalExamRecord record,
       ) async {
+    if (isDeleting) return;
+
     final bool? shouldDelete = await showDialog<bool>(
       context: context,
       builder: (dialogContext) {
-        final ThemeData theme =
-        Theme.of(dialogContext);
+        final ThemeData theme = Theme.of(dialogContext);
 
         final bool isDark =
             theme.brightness == Brightness.dark;
@@ -182,8 +191,7 @@ class _MedicalExamRecordsScreenState
           child: AlertDialog(
             backgroundColor: cardColor,
             shape: RoundedRectangleBorder(
-              borderRadius:
-              BorderRadius.circular(20),
+              borderRadius: BorderRadius.circular(20),
             ),
             title: Row(
               children: [
@@ -191,10 +199,8 @@ class _MedicalExamRecordsScreenState
                   width: 42,
                   height: 42,
                   decoration: BoxDecoration(
-                    color:
-                    Colors.red.withOpacity(0.08),
-                    borderRadius:
-                    BorderRadius.circular(12),
+                    color: Colors.red.withOpacity(0.08),
+                    borderRadius: BorderRadius.circular(12),
                   ),
                   child: const Icon(
                     Icons.delete_outline_rounded,
@@ -202,7 +208,9 @@ class _MedicalExamRecordsScreenState
                     size: 24,
                   ),
                 ),
+
                 const SizedBox(width: 10),
+
                 Expanded(
                   child: Text(
                     'حذف السجل',
@@ -216,16 +224,14 @@ class _MedicalExamRecordsScreenState
               ],
             ),
             content: Text(
-              'هل أنت متأكد من حذف سجل هذا الفحص؟',
+              'هل أنت متأكد من حذف هذا المرفق؟',
               style: TextStyle(
                 fontSize: 14,
                 height: 1.6,
-                color:
-                textColor.withOpacity(0.70),
+                color: textColor.withOpacity(0.70),
               ),
             ),
-            actionsPadding:
-            const EdgeInsets.fromLTRB(
+            actionsPadding: const EdgeInsets.fromLTRB(
               16,
               0,
               16,
@@ -234,35 +240,27 @@ class _MedicalExamRecordsScreenState
             actions: [
               TextButton(
                 onPressed: () {
-                  Navigator.pop(
-                    dialogContext,
-                    false,
-                  );
+                  Navigator.pop(dialogContext, false);
                 },
                 child: Text(
                   'إلغاء',
                   style: TextStyle(
-                    color:
-                    textColor.withOpacity(0.65),
-                    fontWeight:
-                    FontWeight.w600,
+                    color: textColor.withOpacity(0.65),
+                    fontWeight: FontWeight.w600,
                   ),
                 ),
               ),
+
               ElevatedButton(
                 onPressed: () {
-                  Navigator.pop(
-                    dialogContext,
-                    true,
-                  );
+                  Navigator.pop(dialogContext, true);
                 },
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.red,
                   foregroundColor: Colors.white,
                   elevation: 0,
                   shape: RoundedRectangleBorder(
-                    borderRadius:
-                    BorderRadius.circular(12),
+                    borderRadius: BorderRadius.circular(12),
                   ),
                 ),
                 child: const Text(
@@ -278,45 +276,103 @@ class _MedicalExamRecordsScreenState
       },
     );
 
-    if (shouldDelete == true) {
-      deleteRecord(record);
+    if (shouldDelete == true && mounted) {
+      await deleteRecord(record);
     }
   }
 
-  void deleteRecord(
+  // =========================
+  // Delete Record
+  // =========================
+
+  Future<void> deleteRecord(
       MedicalExamRecord record,
-      ) {
+      ) async {
+    if (isDeleting) return;
+
     setState(() {
-      allRecords.remove(record);
-      filteredRecords.remove(record);
+      isDeleting = true;
     });
 
-    ScaffoldMessenger.of(context)
-        .hideCurrentSnackBar();
+    try {
+      final SharedPreferences preferences =
+      await SharedPreferences.getInstance();
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: const Text(
-          'تم حذف السجل بنجاح',
-          textAlign: TextAlign.center,
-        ),
-        behavior: SnackBarBehavior.floating,
-        backgroundColor:
-        Theme.of(context).primaryColor,
-      ),
-    );
+      final List<String> savedRecords =
+          preferences.getStringList(recordsStorageKey) ?? [];
+
+      final List<String> updatedRecords = [];
+
+      for (final String item in savedRecords) {
+        try {
+          final Map<String, dynamic> data =
+          Map<String, dynamic>.from(jsonDecode(item));
+
+          if (data['id'] != record.id) {
+            updatedRecords.add(item);
+          }
+        } catch (_) {
+          // نحافظ على أي سجل لم نتمكن من قراءته.
+          updatedRecords.add(item);
+        }
+      }
+
+      final bool savedSuccessfully =
+      await preferences.setStringList(
+        recordsStorageKey,
+        updatedRecords,
+      );
+
+      if (!savedSuccessfully) {
+        throw Exception('Failed to update records');
+      }
+
+      final File file = File(record.filePath);
+
+      if (await file.exists()) {
+        try {
+          await file.delete();
+        } catch (e) {
+          debugPrint('Delete attachment file error: $e');
+        }
+      }
+
+      if (!mounted) return;
+
+      setState(() {
+        allRecords.removeWhere(
+              (item) => item.id == record.id,
+        );
+      });
+
+      showTemporaryMessage('تم حذف السجل بنجاح');
+    } catch (e) {
+      debugPrint('Delete medical exam error: $e');
+
+      showTemporaryMessage(
+        'تعذر حذف السجل. حاولي مرة أخرى.',
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          isDeleting = false;
+        });
+      }
+    }
   }
+
+  // =========================
+  // Build Screen
+  // =========================
 
   @override
   Widget build(BuildContext context) {
-    final ThemeData theme =
-    Theme.of(context);
+    final ThemeData theme = Theme.of(context);
 
     final bool isDark =
         theme.brightness == Brightness.dark;
 
-    final Color primaryColor =
-        theme.primaryColor;
+    final Color primaryColor = theme.primaryColor;
 
     final Color textColor = isDark
         ? Colors.white
@@ -332,87 +388,71 @@ class _MedicalExamRecordsScreenState
           textDirection: TextDirection.rtl,
           child: LayoutBuilder(
             builder: (context, constraints) {
-              final double width =
-                  constraints.maxWidth;
+              final double width = constraints.maxWidth;
 
-              final bool isVerySmall =
-                  width < 390;
+              final bool isVerySmall = width < 390;
+              final bool isTablet = width >= 600;
 
-              final bool isTablet =
-                  width >= 600;
-
-              final double horizontalPadding =
-              isVerySmall
+              final double horizontalPadding = isVerySmall
                   ? 14
                   : isTablet
                   ? 36
                   : 20;
 
               return SingleChildScrollView(
-                physics:
-                const BouncingScrollPhysics(),
+                physics: const BouncingScrollPhysics(),
                 padding: EdgeInsets.symmetric(
                   horizontal: horizontalPadding,
                   vertical: 18,
                 ),
                 child: Center(
                   child: ConstrainedBox(
-                    constraints:
-                    const BoxConstraints(
+                    constraints: const BoxConstraints(
                       maxWidth: 760,
                     ),
                     child: Column(
                       crossAxisAlignment:
                       CrossAxisAlignment.start,
                       children: [
+
+                        // =========================
+                        // Header
+                        // =========================
+
                         SizedBox(
                           height: 48,
                           child: Stack(
-                            alignment:
-                            Alignment.center,
+                            alignment: Alignment.center,
                             children: [
                               Center(
                                 child: Text(
                                   'سجلات الفحوصات',
-                                  textAlign:
-                                  TextAlign.center,
+                                  textAlign: TextAlign.center,
                                   style: TextStyle(
-                                    fontSize:
-                                    isTablet
-                                        ? 31
-                                        : 27,
-                                    fontWeight:
-                                    FontWeight.bold,
-                                    color:
-                                    textColor,
+                                    fontSize: isTablet ? 31 : 27,
+                                    fontWeight: FontWeight.bold,
+                                    color: textColor,
                                   ),
                                 ),
                               ),
 
                               Align(
                                 alignment:
-                                AlignmentDirectional
-                                    .centerStart,
+                                AlignmentDirectional.centerStart,
                                 child: IconButton(
                                   onPressed: () {
-                                    Navigator.pop(
-                                      context,
-                                    );
+                                    Navigator.pop(context);
                                   },
-                                  padding:
-                                  EdgeInsets.zero,
-                                  constraints:
-                                  const BoxConstraints(
+                                  padding: EdgeInsets.zero,
+                                  constraints: const BoxConstraints(
                                     minWidth: 44,
                                     minHeight: 44,
                                   ),
                                   splashRadius: 22,
                                   icon: Icon(
-                                    Icons
-                                        .arrow_back_ios_new_rounded,
+                                    Icons.arrow_back_ios_new_rounded,
                                     size: 22,
-                                    color:
-                                    textColor,
+                                    color: textColor,
                                   ),
                                 ),
                               ),
@@ -423,33 +463,24 @@ class _MedicalExamRecordsScreenState
                         const SizedBox(height: 12),
 
                         Padding(
-                          padding:
-                          const EdgeInsets
-                              .symmetric(
+                          padding: const EdgeInsets.symmetric(
                             horizontal: 6,
                           ),
                           child: Text(
                             'عرض الفحوصات الطبية التي تم تسجيلها سابقًا',
                             style: TextStyle(
                               fontSize: 14,
-                              fontWeight:
-                              FontWeight.w500,
-                              color:
-                              secondaryTextColor,
+                              fontWeight: FontWeight.w500,
+                              color: secondaryTextColor,
                             ),
                           ),
                         ),
 
                         const SizedBox(height: 22),
 
-                        _filterSection(
-                          context,
-                          primaryColor:
-                          primaryColor,
-                          textColor: textColor,
-                        ),
-
-                        const SizedBox(height: 22),
+                        // =========================
+                        // Records
+                        // =========================
 
                         Row(
                           children: [
@@ -458,21 +489,18 @@ class _MedicalExamRecordsScreenState
                                 'السجلات',
                                 style: TextStyle(
                                   fontSize: 18,
-                                  fontWeight:
-                                  FontWeight.bold,
-                                  color:
-                                  textColor,
+                                  fontWeight: FontWeight.bold,
+                                  color: textColor,
                                 ),
                               ),
                             ),
+
                             Text(
-                              '${filteredRecords.length} سجل',
+                              '${allRecords.length} سجل',
                               style: TextStyle(
                                 fontSize: 12.5,
-                                color:
-                                secondaryTextColor,
-                                fontWeight:
-                                FontWeight.w500,
+                                color: secondaryTextColor,
+                                fontWeight: FontWeight.w500,
                               ),
                             ),
                           ],
@@ -480,19 +508,22 @@ class _MedicalExamRecordsScreenState
 
                         const SizedBox(height: 12),
 
-                        if (filteredRecords.isEmpty)
+                        if (isLoading)
+                          Padding(
+                            padding: const EdgeInsets.all(35),
+                            child: Center(
+                              child: CircularProgressIndicator(
+                                color: primaryColor,
+                              ),
+                            ),
+                          )
+                        else if (allRecords.isEmpty)
                           _emptyState(context)
                         else
-                          ...filteredRecords
-                              .asMap()
-                              .entries
-                              .map(
+                          ...allRecords.asMap().entries.map(
                                 (entry) {
-                              final int index =
-                                  entry.key;
-
-                              final MedicalExamRecord
-                              record =
+                              final int index = entry.key;
+                              final MedicalExamRecord record =
                                   entry.value;
 
                               return Column(
@@ -501,13 +532,9 @@ class _MedicalExamRecordsScreenState
                                     context,
                                     record: record,
                                   ),
-                                  if (index !=
-                                      filteredRecords
-                                          .length -
-                                          1)
-                                    const SizedBox(
-                                      height: 12,
-                                    ),
+
+                                  if (index != allRecords.length - 1)
+                                    const SizedBox(height: 12),
                                 ],
                               );
                             },
@@ -526,350 +553,20 @@ class _MedicalExamRecordsScreenState
     );
   }
 
-  Widget _filterSection(
-      BuildContext context, {
-        required Color primaryColor,
-        required Color textColor,
-      }) {
-    final ThemeData theme =
-    Theme.of(context);
-
-    final bool isDark =
-        theme.brightness == Brightness.dark;
-
-    final Color cardColor = isDark
-        ? const Color(0xff1D292D)
-        : Colors.white;
-
-    final Color borderColor = isDark
-        ? Colors.white.withOpacity(0.12)
-        : const Color(0xffE2EEEE);
-
-    return Container(
-      width: double.infinity,
-      decoration: BoxDecoration(
-        color: cardColor,
-        borderRadius:
-        BorderRadius.circular(18),
-        border: Border.all(
-          color: borderColor,
-        ),
-      ),
-      child: Column(
-        children: [
-          InkWell(
-            onTap: () {
-              setState(() {
-                filterExpanded =
-                !filterExpanded;
-              });
-            },
-            borderRadius:
-            BorderRadius.circular(18),
-            child: Padding(
-              padding:
-              const EdgeInsets.all(15),
-              child: Row(
-                children: [
-                  Container(
-                    width: 44,
-                    height: 44,
-                    decoration: BoxDecoration(
-                      color:
-                      primaryColor.withOpacity(
-                        isDark ? 0.14 : 0.10,
-                      ),
-                      borderRadius:
-                      BorderRadius.circular(
-                        13,
-                      ),
-                    ),
-                    child: Icon(
-                      Icons.filter_alt_outlined,
-                      color: primaryColor,
-                      size: 23,
-                    ),
-                  ),
-
-                  const SizedBox(width: 12),
-
-                  Expanded(
-                    child: Text(
-                      'فلترة الفحوصات حسب التاريخ',
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight:
-                        FontWeight.w600,
-                        color: textColor,
-                      ),
-                    ),
-                  ),
-
-                  AnimatedRotation(
-                    duration:
-                    const Duration(
-                      milliseconds: 250,
-                    ),
-                    turns:
-                    filterExpanded ? 0.5 : 0,
-                    child: Icon(
-                      Icons
-                          .keyboard_arrow_down_rounded,
-                      color: textColor
-                          .withOpacity(0.45),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-
-          AnimatedSize(
-            duration:
-            const Duration(
-              milliseconds: 250,
-            ),
-            alignment:
-            Alignment.topCenter,
-            child: filterExpanded
-                ? Padding(
-              padding:
-              const EdgeInsets
-                  .fromLTRB(
-                15,
-                0,
-                15,
-                15,
-              ),
-              child: Column(
-                children: [
-                  Divider(
-                    color: textColor
-                        .withOpacity(
-                      0.08,
-                    ),
-                  ),
-
-                  const SizedBox(
-                    height: 12,
-                  ),
-
-                  Row(
-                    children: [
-                      Expanded(
-                        child: _dateField(
-                          context,
-                          label:
-                          'من تاريخ',
-                          value: startDate ==
-                              null
-                              ? 'اختاري التاريخ'
-                              : formatDate(
-                            startDate!,
-                          ),
-                          onTap:
-                          pickStartDate,
-                        ),
-                      ),
-
-                      const SizedBox(
-                        width: 10,
-                      ),
-
-                      Expanded(
-                        child: _dateField(
-                          context,
-                          label:
-                          'إلى تاريخ',
-                          value: endDate ==
-                              null
-                              ? 'اختاري التاريخ'
-                              : formatDate(
-                            endDate!,
-                          ),
-                          onTap:
-                          pickEndDate,
-                        ),
-                      ),
-                    ],
-                  ),
-
-                  const SizedBox(
-                    height: 15,
-                  ),
-
-                  SizedBox(
-                    width:
-                    double.infinity,
-                    height: 48,
-                    child:
-                    ElevatedButton.icon(
-                      onPressed:
-                      applyFilter,
-                      icon: const Icon(
-                        Icons
-                            .filter_alt_rounded,
-                      ),
-                      label: const Text(
-                        'تطبيق الفلترة',
-                        style: TextStyle(
-                          fontWeight:
-                          FontWeight
-                              .bold,
-                        ),
-                      ),
-                      style:
-                      ElevatedButton
-                          .styleFrom(
-                        backgroundColor:
-                        primaryColor,
-                        foregroundColor:
-                        Colors.white,
-                        elevation: 0,
-                        shape:
-                        RoundedRectangleBorder(
-                          borderRadius:
-                          BorderRadius
-                              .circular(
-                            14,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-
-                  const SizedBox(
-                    height: 8,
-                  ),
-
-                  TextButton(
-                    onPressed:
-                    resetFilter,
-                    child: Text(
-                      'إعادة تعيين',
-                      style: TextStyle(
-                        color:
-                        primaryColor,
-                        fontWeight:
-                        FontWeight
-                            .w600,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            )
-                : const SizedBox(
-              height: 0,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _dateField(
-      BuildContext context, {
-        required String label,
-        required String value,
-        required VoidCallback onTap,
-      }) {
-    final ThemeData theme =
-    Theme.of(context);
-
-    final bool isDark =
-        theme.brightness == Brightness.dark;
-
-    final Color primaryColor =
-        theme.primaryColor;
-
-    final Color textColor = isDark
-        ? Colors.white
-        : const Color(0xff2C4A5A);
-
-    final Color fieldColor = isDark
-        ? const Color(0xff243236)
-        : primaryColor.withOpacity(0.04);
-
-    final Color borderColor = isDark
-        ? Colors.white.withOpacity(0.12)
-        : const Color(0xffE2EEEE);
-
-    return InkWell(
-      onTap: onTap,
-      borderRadius:
-      BorderRadius.circular(14),
-      child: Container(
-        padding:
-        const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: fieldColor,
-          borderRadius:
-          BorderRadius.circular(14),
-          border: Border.all(
-            color: borderColor,
-          ),
-        ),
-        child: Column(
-          crossAxisAlignment:
-          CrossAxisAlignment.start,
-          children: [
-            Text(
-              label,
-              style: TextStyle(
-                fontSize: 11.5,
-                color:
-                textColor.withOpacity(0.55),
-              ),
-            ),
-
-            const SizedBox(height: 7),
-
-            Row(
-              children: [
-                Icon(
-                  Icons
-                      .calendar_today_outlined,
-                  size: 18,
-                  color: primaryColor,
-                ),
-
-                const SizedBox(width: 6),
-
-                Expanded(
-                  child: Text(
-                    value,
-                    maxLines: 1,
-                    overflow:
-                    TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight:
-                      FontWeight.w500,
-                      color: textColor,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
-  }
+  // =========================
+  // Exam Record Card
+  // =========================
 
   Widget _examRecordCard(
       BuildContext context, {
         required MedicalExamRecord record,
       }) {
-    final ThemeData theme =
-    Theme.of(context);
+    final ThemeData theme = Theme.of(context);
 
     final bool isDark =
         theme.brightness == Brightness.dark;
 
-    final Color primaryColor =
-        theme.primaryColor;
+    final Color primaryColor = theme.primaryColor;
 
     final Color textColor = isDark
         ? Colors.white
@@ -885,15 +582,11 @@ class _MedicalExamRecordsScreenState
 
     return Container(
       width: double.infinity,
-      padding:
-      const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: cardColor,
-        borderRadius:
-        BorderRadius.circular(18),
-        border: Border.all(
-          color: borderColor,
-        ),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: borderColor),
       ),
       child: Row(
         children: [
@@ -902,15 +595,15 @@ class _MedicalExamRecordsScreenState
             height: 50,
             decoration: BoxDecoration(
               color: isDark
-                  ? const Color(0xff4F829E)
-                  .withOpacity(0.18)
+                  ? const Color(0xff4F829E).withOpacity(0.18)
                   : const Color(0xffEAF4FA),
-              borderRadius:
-              BorderRadius.circular(14),
+              borderRadius: BorderRadius.circular(14),
             ),
-            child: const Icon(
-              Icons.biotech_rounded,
-              color: Color(0xff4F829E),
+            child: Icon(
+              record.fileType == 'pdf'
+                  ? Icons.picture_as_pdf_outlined
+                  : Icons.image_outlined,
+              color: const Color(0xff4F829E),
               size: 27,
             ),
           ),
@@ -918,111 +611,103 @@ class _MedicalExamRecordsScreenState
           const SizedBox(width: 12),
 
           Expanded(
-            child: Column(
-              crossAxisAlignment:
-              CrossAxisAlignment.start,
-              children: [
-                Text(
-                  record.examName,
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight:
-                    FontWeight.bold,
-                    color: textColor,
-                  ),
-                ),
-
-                const SizedBox(height: 5),
-
-                Text(
-                  record.result,
-                  style: TextStyle(
-                    fontSize: 12.5,
-                    color:
-                    textColor.withOpacity(
-                      0.65,
+            child: InkWell(
+              onTap: () => openAttachment(record),
+              borderRadius: BorderRadius.circular(10),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    record.fileName,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.bold,
+                      color: textColor,
                     ),
                   ),
-                ),
 
-                const SizedBox(height: 4),
+                  const SizedBox(height: 5),
 
-                Text(
-                  record.note,
-                  style: TextStyle(
-                    fontSize: 12,
-                    color:
-                    textColor.withOpacity(
-                      0.55,
+                  Text(
+                    record.fileType == 'pdf'
+                        ? 'ملف PDF'
+                        : 'صورة فحص طبي',
+                    style: TextStyle(
+                      fontSize: 12.5,
+                      color: textColor.withOpacity(0.65),
                     ),
                   ),
-                ),
 
-                const SizedBox(height: 7),
+                  const SizedBox(height: 5),
 
-                Wrap(
-                  spacing: 12,
-                  runSpacing: 5,
-                  children: [
-                    Row(
-                      mainAxisSize:
-                      MainAxisSize.min,
-                      children: [
-                        Icon(
-                          Icons
-                              .calendar_today_outlined,
-                          size: 14,
-                          color:
-                          primaryColor,
-                        ),
-                        const SizedBox(
-                          width: 4,
-                        ),
-                        Text(
-                          formatDate(
-                            record.date,
+                  Text(
+                    'الطفل: ${record.childName}',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: textColor.withOpacity(0.55),
+                    ),
+                  ),
+
+                  const SizedBox(height: 7),
+
+                  Wrap(
+                    spacing: 12,
+                    runSpacing: 5,
+                    children: [
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            Icons.calendar_today_outlined,
+                            size: 14,
+                            color: primaryColor,
                           ),
-                          style:
-                          TextStyle(
-                            fontSize: 11.5,
-                            color: textColor
-                                .withOpacity(
-                              0.55,
+                          const SizedBox(width: 4),
+                          Text(
+                            formatDate(record.date),
+                            style: TextStyle(
+                              fontSize: 11.5,
+                              color: textColor.withOpacity(0.55),
                             ),
                           ),
-                        ),
-                      ],
-                    ),
-                    Row(
-                      mainAxisSize:
-                      MainAxisSize.min,
-                      children: [
-                        Icon(
-                          Icons
-                              .access_time_rounded,
-                          size: 14,
-                          color:
-                          primaryColor,
-                        ),
-                        const SizedBox(
-                          width: 4,
-                        ),
-                        Text(
-                          record.time,
-                          style:
-                          TextStyle(
-                            fontSize: 11.5,
-                            color: textColor
-                                .withOpacity(
-                              0.55,
+                        ],
+                      ),
+
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            Icons.access_time_rounded,
+                            size: 14,
+                            color: primaryColor,
+                          ),
+                          const SizedBox(width: 4),
+                          Text(
+                            formatTime(record.date),
+                            style: TextStyle(
+                              fontSize: 11.5,
+                              color: textColor.withOpacity(0.55),
                             ),
                           ),
-                        ),
-                      ],
+                        ],
+                      ),
+                    ],
+                  ),
+
+                  const SizedBox(height: 7),
+
+                  Text(
+                    'اضغطي على المرفق لفتحه',
+                    style: TextStyle(
+                      fontSize: 11.5,
+                      color: primaryColor,
+                      fontWeight: FontWeight.w500,
                     ),
-                  ],
-                ),
-              ],
+                  ),
+                ],
+              ),
             ),
           ),
 
@@ -1032,19 +717,17 @@ class _MedicalExamRecordsScreenState
             color: Colors.red.withOpacity(
               isDark ? 0.12 : 0.08,
             ),
-            borderRadius:
-            BorderRadius.circular(12),
+            borderRadius: BorderRadius.circular(12),
             child: InkWell(
-              onTap: () =>
-                  confirmDelete(record),
-              borderRadius:
-              BorderRadius.circular(12),
+              onTap: isDeleting
+                  ? null
+                  : () => confirmDelete(record),
+              borderRadius: BorderRadius.circular(12),
               child: const SizedBox(
                 width: 42,
                 height: 42,
                 child: Icon(
-                  Icons
-                      .delete_outline_rounded,
+                  Icons.delete_outline_rounded,
                   color: Colors.red,
                   size: 22,
                 ),
@@ -1056,17 +739,17 @@ class _MedicalExamRecordsScreenState
     );
   }
 
-  Widget _emptyState(
-      BuildContext context,
-      ) {
-    final ThemeData theme =
-    Theme.of(context);
+  // =========================
+  // Empty State
+  // =========================
+
+  Widget _emptyState(BuildContext context) {
+    final ThemeData theme = Theme.of(context);
 
     final bool isDark =
         theme.brightness == Brightness.dark;
 
-    final Color primaryColor =
-        theme.primaryColor;
+    final Color primaryColor = theme.primaryColor;
 
     final Color textColor = isDark
         ? Colors.white
@@ -1082,18 +765,14 @@ class _MedicalExamRecordsScreenState
 
     return Container(
       width: double.infinity,
-      padding:
-      const EdgeInsets.symmetric(
+      padding: const EdgeInsets.symmetric(
         horizontal: 20,
         vertical: 32,
       ),
       decoration: BoxDecoration(
         color: cardColor,
-        borderRadius:
-        BorderRadius.circular(18),
-        border: Border.all(
-          color: borderColor,
-        ),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: borderColor),
       ),
       child: Column(
         children: [
@@ -1106,15 +785,11 @@ class _MedicalExamRecordsScreenState
           const SizedBox(height: 12),
 
           Text(
-            startDate != null &&
-                endDate != null
-                ? 'لا توجد فحوصات ضمن الفترة المحددة'
-                : 'لا توجد فحوصات',
+            'لا توجد فحوصات',
             textAlign: TextAlign.center,
             style: TextStyle(
               fontSize: 14,
-              fontWeight:
-              FontWeight.w600,
+              fontWeight: FontWeight.w600,
               color: textColor,
             ),
           ),
@@ -1125,17 +800,32 @@ class _MedicalExamRecordsScreenState
 }
 
 class MedicalExamRecord {
-  final String examName;
-  final String result;
+  final String id;
+  final String childName;
+  final String fileName;
+  final String filePath;
+  final String fileType;
   final DateTime date;
-  final String time;
-  final String note;
 
   MedicalExamRecord({
-    required this.examName,
-    required this.result,
+    required this.id,
+    required this.childName,
+    required this.fileName,
+    required this.filePath,
+    required this.fileType,
     required this.date,
-    required this.time,
-    required this.note,
   });
+
+  factory MedicalExamRecord.fromJson(
+      Map<String, dynamic> json,
+      ) {
+    return MedicalExamRecord(
+      id: json['id']?.toString() ?? '',
+      childName: json['childName']?.toString() ?? '',
+      fileName: json['fileName']?.toString() ?? '',
+      filePath: json['filePath']?.toString() ?? '',
+      fileType: json['fileType']?.toString() ?? '',
+      date: DateTime.parse(json['savedAt'].toString()),
+    );
+  }
 }

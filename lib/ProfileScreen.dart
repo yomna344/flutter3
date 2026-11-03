@@ -1,3 +1,4 @@
+
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -32,7 +33,8 @@ class ProfileScreen extends StatefulWidget {
   });
 
   @override
-  State<ProfileScreen> createState() => _ProfileScreenState();
+  State<ProfileScreen> createState() =>
+      _ProfileScreenState();
 }
 
 class _ProfileScreenState extends State<ProfileScreen> {
@@ -60,25 +62,29 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
     guardianFirstName =
         widget.guardianFirstName?.trim() ?? '';
+
     guardianMiddleName =
         widget.guardianMiddleName?.trim() ?? '';
+
     guardianLastName =
         widget.guardianLastName?.trim() ?? '';
+
     guardianPhone =
         widget.guardianPhone?.trim() ?? '';
 
     firstNameController =
         TextEditingController(text: guardianFirstName);
+
     middleNameController =
         TextEditingController(text: guardianMiddleName);
+
     lastNameController =
         TextEditingController(text: guardianLastName);
+
     phoneController =
         TextEditingController(text: guardianPhone);
 
-
-
-    // لا تضيفي نسخة جديدة إذا كان الطفل موجودًا.
+    // لا ننشئ نسخة إضافية إذا كان الطفل موجودًا.
     ChildModel? existingChild;
 
     for (final child in store.children) {
@@ -95,7 +101,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
     if (existingChild != null) {
       store.selectChild(existingChild.localId);
-    } else {
+    } else if (store.children.isEmpty) {
+      // توافق مؤقت مع الشاشات المحلية القديمة.
       store.addChild(
         ChildModel(
           localId:
@@ -109,7 +116,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
   }
 
-  // مقارنة بيانات الطفل لمنع تكرار عرضه.
+  // =====================================
+  // مقارنة بيانات الأطفال
+  // =====================================
+
   bool _sameChild(
       ChildModel child,
       String fullName,
@@ -119,11 +129,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
     return child.fullName.trim().toLowerCase() ==
         fullName.trim().toLowerCase() &&
         child.gender.trim() == gender.trim() &&
-        DateUtils.isSameDay(child.birthDate, birthDate);
+        DateUtils.isSameDay(
+          child.birthDate,
+          birthDate,
+        );
   }
 
-  // إخفاء النسخ المتطابقة من الواجهة.
-  // لا نحذف بيانات الأطفال من ChildStore.
   List<ChildModel> _uniqueChildren(
       List<ChildModel> source,
       ) {
@@ -131,13 +142,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
     for (final child in source) {
       final duplicate = unique.any(
-            (existing) =>
-            _sameChild(
-              existing,
-              child.fullName,
-              child.gender,
-              child.birthDate,
-            ),
+            (existing) => _sameChild(
+          existing,
+          child.fullName,
+          child.gender,
+          child.birthDate,
+        ),
       );
 
       if (!duplicate) {
@@ -147,6 +157,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
     return unique;
   }
+
+  // =====================================
+  // حساب العمر
+  // =====================================
 
   int calculateAge(DateTime dateOfBirth) {
     final today = DateTime.now();
@@ -161,6 +175,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
     return age;
   }
+
+  // =====================================
+  // معلومات ولي الأمر
+  // =====================================
 
   String get guardianFullName {
     final names = [
@@ -182,6 +200,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
     return '+${Validators.cleanPhoneNumber(guardianPhone)}';
   }
 
+  // =====================================
+  // الرسائل
+  // =====================================
+
   void showTemporaryMessage(String message) {
     if (!mounted) return;
 
@@ -199,9 +221,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  // =========================
+  // =====================================
   // اختيار الطفل
-  // =========================
+  // =====================================
 
   void selectChild(ChildModel child) {
     if (store.selectedChild?.localId == child.localId) {
@@ -215,12 +237,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  // =========================
+  // =====================================
   // إضافة طفل
-  // =========================
+  // =====================================
 
   Future<void> addChild() async {
-    final result = await Navigator.push<Map<String, dynamic>>(
+    final result =
+    await Navigator.push<Map<String, dynamic>>(
       context,
       MaterialPageRoute(
         builder: (_) => const ChildInfoScreen(
@@ -232,22 +255,25 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
     if (!mounted || result == null) return;
 
-    // ChildInfoScreen يحفظ الطفل في ChildStore.
-    // لا نضيف الطفل مرة أخرى هنا.
+    // ChildInfoScreen يضيف الطفل إلى ChildStore.
     setState(() {});
 
-    showTemporaryMessage('تمت إضافة الطفل بنجاح');
+    showTemporaryMessage(
+      'تمت إضافة الطفل بنجاح',
+    );
   }
 
-  // =========================
+  // =====================================
   // تعديل بيانات طفل
-  // =========================
+  // =====================================
 
   Future<void> editChild(ChildModel child) async {
-    final result = await Navigator.push<Map<String, dynamic>>(
+    final result =
+    await Navigator.push<Map<String, dynamic>>(
       context,
       MaterialPageRoute(
         builder: (_) => ChildInfoScreen(
+          childId: child.id,
           showBackButton: true,
           isEditMode: true,
           initialFirstName: child.firstName,
@@ -257,7 +283,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
           initialBirthDate: child.birthDate,
           initialDiabetesType: child.diabetesType,
           initialDiagnosisDate: child.diagnosisDate,
-          initialAllergy: child.allergy,
           initialNotes: child.notes,
           initialImagePath: child.imagePath,
         ),
@@ -266,6 +291,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
     if (!mounted || result == null) return;
 
+    // يتم تحديث بيانات Flutter بعد نجاح Laravel.
     final updatedChild = ChildModel(
       id: child.id,
       localId: child.localId,
@@ -278,18 +304,21 @@ class _ProfileScreenState extends State<ProfileScreen> {
       gender:
       (result['gender'] ?? child.gender).toString(),
       birthDate:
-      result['birthDate'] as DateTime? ?? child.birthDate,
+      result['birthDate'] as DateTime? ??
+          child.birthDate,
       imagePath: result.containsKey('imagePath')
           ? result['imagePath'] as String?
           : child.imagePath,
+
+      // الحفاظ على صورة Laravel أثناء تعديل البيانات.
+      serverImagePath: child.serverImagePath,
+
       diabetesType:
       (result['diabetesType'] ?? child.diabetesType)
           .toString(),
       diagnosisDate:
       result['diagnosisDate'] as DateTime? ??
           child.diagnosisDate,
-      allergy:
-      (result['allergy'] ?? child.allergy).toString(),
       notes:
       (result['notes'] ?? child.notes).toString(),
     );
@@ -298,12 +327,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
     setState(() {});
 
-    showTemporaryMessage('تم حفظ بيانات الطفل');
+    showTemporaryMessage(
+      'تم حفظ بيانات الطفل',
+    );
   }
 
-  // =========================
-  // بيانات ولي الأمر
-  // =========================
+  // =====================================
+  // تعديل بيانات ولي الأمر
+  // =====================================
 
   void startEditingGuardian() {
     setState(() {
@@ -338,7 +369,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
     setState(() => isSavingGuardian = true);
 
-    // الحفظ تجريبي حتى ربط Laravel.
+    // بيانات ولي الأمر لم يتم ربط تعديلها بعد.
     await Future.delayed(const Duration(seconds: 1));
 
     if (!mounted) return;
@@ -347,6 +378,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       guardianFirstName = firstNameController.text.trim();
       guardianMiddleName = middleNameController.text.trim();
       guardianLastName = lastNameController.text.trim();
+
       guardianPhone =
           Validators.cleanPhoneNumber(phoneController.text);
 
@@ -354,8 +386,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
       isEditingGuardian = false;
     });
 
-    showTemporaryMessage('تم حفظ التغييرات');
+    showTemporaryMessage(
+      'تم حفظ التغييرات',
+    );
   }
+
+  // =====================================
+  // حقول ولي الأمر
+  // =====================================
 
   Widget _nameField(
       TextEditingController controller,
@@ -366,7 +404,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
       controller: controller,
       keyboardType: TextInputType.name,
       textAlign: TextAlign.right,
-      autovalidateMode: AutovalidateMode.onUserInteraction,
+      autovalidateMode:
+      AutovalidateMode.onUserInteraction,
       validator: Validators.arabicName,
       decoration: _inputDecoration(
         hint,
@@ -387,7 +426,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
     return InputDecoration(
       hintText: hint,
       hintTextDirection: TextDirection.rtl,
-      prefixIcon: Icon(icon, color: primaryColor),
+      prefixIcon: Icon(
+        icon,
+        color: primaryColor,
+      ),
       filled: true,
       fillColor: Theme.of(context).cardColor,
       contentPadding: const EdgeInsets.symmetric(
@@ -425,9 +467,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  // =========================
-  // الإعدادات وتسجيل الخروج
-  // =========================
+  // =====================================
+  // الإعدادات
+  // =====================================
 
   void openSettings() {
     Navigator.push(
@@ -437,6 +479,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
       ),
     );
   }
+
+  // =====================================
+  // تسجيل الخروج
+  // =====================================
 
   Future<void> logout() async {
     final confirmed = await showDialog<bool>(
@@ -456,15 +502,19 @@ class _ProfileScreenState extends State<ProfileScreen> {
           ),
           content: const Text(
             'هل تريد تسجيل الخروج من الحساب؟',
-            style: TextStyle(color: Color(0xff5C6E75)),
+            style: TextStyle(
+              color: Color(0xff5C6E75),
+            ),
           ),
           actions: [
             TextButton(
-              onPressed: () => Navigator.pop(context, false),
+              onPressed: () =>
+                  Navigator.pop(context, false),
               child: const Text('إلغاء'),
             ),
             TextButton(
-              onPressed: () => Navigator.pop(context, true),
+              onPressed: () =>
+                  Navigator.pop(context, true),
               child: const Text(
                 'تسجيل الخروج',
                 style: TextStyle(
@@ -491,6 +541,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
+  // =====================================
+  // التخلص من Controllers
+  // =====================================
+
   @override
   void dispose() {
     firstNameController.dispose();
@@ -501,13 +555,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
     super.dispose();
   }
 
-  // =========================
-  // واجهة البروفايل
-  // =========================
+  // =====================================
+  // واجهة الملف الشخصي
+  // =====================================
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+
     final primaryColor = theme.primaryColor;
     final textColor = theme.colorScheme.onSurface;
 
@@ -518,11 +573,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
           child: AnimatedBuilder(
             animation: store,
             builder: (context, _) {
-              // عرض نسخة واحدة من كل طفل متطابق.
-              final children = _uniqueChildren(store.children);
+              final children =
+              _uniqueChildren(store.children);
+
               final current = store.selectedChild;
 
-              final width = MediaQuery.of(context).size.width;
+              final width =
+                  MediaQuery.of(context).size.width;
+
               final isVerySmall = width < 390;
               final isTablet = width >= 600;
 
@@ -547,6 +605,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       crossAxisAlignment:
                       CrossAxisAlignment.stretch,
                       children: [
+                        // =====================================
+                        // العنوان
+                        // =====================================
+
                         Text(
                           'الملف الشخصي',
                           style: TextStyle(
@@ -555,7 +617,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             color: textColor,
                           ),
                         ),
+
                         const SizedBox(height: 4),
+
                         Text(
                           'إدارة حسابك وبيانات أطفالك',
                           style: TextStyle(
@@ -563,9 +627,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             color: textColor.withOpacity(0.65),
                           ),
                         ),
+
                         const SizedBox(height: 25),
 
+                        // =====================================
                         // بيانات ولي الأمر
+                        // =====================================
+
                         Container(
                           padding: const EdgeInsets.all(18),
                           decoration: BoxDecoration(
@@ -590,11 +658,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                   'تعديل بيانات ولي الأمر',
                                   style: TextStyle(
                                     fontSize: 18,
-                                    fontWeight:
-                                    FontWeight.bold,
+                                    fontWeight: FontWeight.bold,
                                   ),
                                 ),
+
                                 const SizedBox(height: 16),
+
                                 if (isVerySmall) ...[
                                   _nameField(
                                     firstNameController,
@@ -641,7 +710,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                       ),
                                     ],
                                   ),
+
                                 const SizedBox(height: 14),
+
                                 TextFormField(
                                   controller: phoneController,
                                   keyboardType:
@@ -658,13 +729,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                     primaryColor,
                                   ),
                                 ),
+
                                 const SizedBox(height: 18),
+
                                 Row(
                                   children: [
                                     Expanded(
                                       child: ElevatedButton(
-                                        onPressed:
-                                        isSavingGuardian
+                                        onPressed: isSavingGuardian
                                             ? null
                                             : saveGuardianInformation,
                                         child: isSavingGuardian
@@ -696,15 +768,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             children: [
                               CircleAvatar(
                                 radius: 35,
-                                backgroundColor: primaryColor
-                                    .withOpacity(0.12),
+                                backgroundColor:
+                                primaryColor.withOpacity(0.12),
                                 child: Icon(
                                   Icons.person_rounded,
                                   color: primaryColor,
                                   size: 39,
                                 ),
                               ),
+
                               const SizedBox(width: 14),
+
                               Expanded(
                                 child: Column(
                                   crossAxisAlignment:
@@ -714,8 +788,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                       guardianFullName,
                                       style: const TextStyle(
                                         fontSize: 18,
-                                        fontWeight:
-                                        FontWeight.bold,
+                                        fontWeight: FontWeight.bold,
                                       ),
                                     ),
                                     const SizedBox(height: 5),
@@ -730,6 +803,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                   ],
                                 ),
                               ),
+
                               IconButton(
                                 onPressed: startEditingGuardian,
                                 icon: Icon(
@@ -742,6 +816,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         ),
 
                         const SizedBox(height: 26),
+
+                        // =====================================
+                        // قسم الأطفال
+                        // =====================================
 
                         Row(
                           children: [
@@ -760,6 +838,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             ),
                           ],
                         ),
+
                         const SizedBox(height: 12),
 
                         if (children.isEmpty)
@@ -771,18 +850,26 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             ),
                           ),
 
+                        // =====================================
+                        // بطاقات الأطفال
+                        // =====================================
+
                         ...children.map((child) {
                           final isSelected =
                               current?.localId == child.localId;
-                          final age = calculateAge(child.birthDate);
+
+                          final age =
+                          calculateAge(child.birthDate);
 
                           return Container(
                             key: ValueKey(child.localId),
-                            margin: const EdgeInsets.only(bottom: 12),
+                            margin:
+                            const EdgeInsets.only(bottom: 12),
                             padding: const EdgeInsets.all(15),
                             decoration: BoxDecoration(
                               color: theme.cardColor,
-                              borderRadius: BorderRadius.circular(18),
+                              borderRadius:
+                              BorderRadius.circular(18),
                               border: Border.all(
                                 color: isSelected
                                     ? primaryColor
@@ -794,6 +881,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                               children: [
                                 Row(
                                   children: [
+                                    // صورة الطفل المحلية أو صورة Laravel
                                     Container(
                                       width: 65,
                                       height: 65,
@@ -802,31 +890,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                             .withOpacity(0.12),
                                         shape: BoxShape.circle,
                                       ),
-                                      child: child.imagePath != null &&
-                                          child.imagePath!
-                                              .trim()
-                                              .isNotEmpty
-                                          ? ClipOval(
-                                        child: Image.file(
-                                          File(child.imagePath!),
-                                          fit: BoxFit.cover,
-                                          errorBuilder: (
-                                              context,
-                                              error,
-                                              stackTrace,
-                                              ) =>
-                                              _childFallback(
-                                                child,
-                                                primaryColor,
-                                              ),
-                                        ),
-                                      )
-                                          : _childFallback(
+                                      child: _buildChildImage(
                                         child,
                                         primaryColor,
                                       ),
                                     ),
+
                                     const SizedBox(width: 13),
+
                                     Expanded(
                                       child: Column(
                                         crossAxisAlignment:
@@ -840,16 +911,20 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                               FontWeight.bold,
                                             ),
                                           ),
+
                                           const SizedBox(height: 7),
+
                                           Wrap(
                                             spacing: 12,
                                             runSpacing: 6,
                                             children: [
                                               _smallInfo(
-                                                Icons.calendar_month_outlined,
+                                                Icons
+                                                    .calendar_month_outlined,
                                                 '$age سنوات',
                                                 primaryColor,
                                               ),
+
                                               _smallInfo(
                                                 child.gender == 'بنت'
                                                     ? Icons.female
@@ -862,10 +937,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                         ],
                                       ),
                                     ),
+
                                     IconButton(
                                       tooltip: 'تعديل بيانات الطفل',
-                                      onPressed: () =>
-                                          editChild(child),
+                                      onPressed: () => editChild(child),
                                       icon: Icon(
                                         Icons.edit_outlined,
                                         color: primaryColor,
@@ -873,7 +948,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                     ),
                                   ],
                                 ),
+
                                 const SizedBox(height: 12),
+
                                 SizedBox(
                                   width: double.infinity,
                                   child: isSelected
@@ -914,6 +991,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
                         const SizedBox(height: 28),
 
+                        // =====================================
+                        // الإعدادات وتسجيل الخروج
+                        // =====================================
+
                         _profileOption(
                           icon: Icons.settings_outlined,
                           title: 'الإعدادات',
@@ -947,6 +1028,95 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
+  // =====================================
+  // عرض صورة الطفل
+  // =====================================
+
+  Widget _buildChildImage(
+      ChildModel child,
+      Color primaryColor,
+      ) {
+    final String? localPath = child.imagePath;
+
+    // أولًا: صورة محفوظة داخل الجهاز
+    if (localPath != null &&
+        localPath.trim().isNotEmpty &&
+        File(localPath).existsSync()) {
+      return ClipOval(
+        child: Image.file(
+          File(localPath),
+          width: 65,
+          height: 65,
+          fit: BoxFit.cover,
+          errorBuilder: (
+              context,
+              error,
+              stackTrace,
+              ) {
+            return _childFallback(
+              child,
+              primaryColor,
+            );
+          },
+        ),
+      );
+    }
+
+    // ثانيًا: صورة محفوظة على Laravel
+    final String? imageUrl = child.imageUrl;
+
+    if (imageUrl != null && imageUrl.isNotEmpty) {
+      return ClipOval(
+        child: Image.network(
+          imageUrl,
+          width: 65,
+          height: 65,
+          fit: BoxFit.cover,
+          loadingBuilder: (
+              context,
+              image,
+              loadingProgress,
+              ) {
+            if (loadingProgress == null) {
+              return image;
+            }
+
+            return Center(
+              child: SizedBox(
+                width: 22,
+                height: 22,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: primaryColor,
+                ),
+              ),
+            );
+          },
+          errorBuilder: (
+              context,
+              error,
+              stackTrace,
+              ) {
+            return _childFallback(
+              child,
+              primaryColor,
+            );
+          },
+        ),
+      );
+    }
+
+    // ثالثًا: الصورة الافتراضية
+    return _childFallback(
+      child,
+      primaryColor,
+    );
+  }
+
+  // =====================================
+  // الصورة الافتراضية
+  // =====================================
+
   Widget _childFallback(
       ChildModel child,
       Color primaryColor,
@@ -960,6 +1130,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
+  // =====================================
+  // معلومات الطفل المختصرة
+  // =====================================
+
   Widget _smallInfo(
       IconData icon,
       String text,
@@ -968,7 +1142,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Icon(icon, size: 17, color: primaryColor),
+        Icon(
+          icon,
+          size: 17,
+          color: primaryColor,
+        ),
         const SizedBox(width: 4),
         Text(
           text,
@@ -983,6 +1161,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
       ],
     );
   }
+
+  // =====================================
+  // خيارات الملف الشخصي
+  // =====================================
 
   Widget _profileOption({
     required IconData icon,
@@ -1021,41 +1203,51 @@ class _ProfileScreenState extends State<ProfileScreen> {
               ),
               child: Icon(
                 icon,
-                color: isDanger ? Colors.red : primaryColor,
+                color:
+                isDanger ? Colors.red : primaryColor,
                 size: 25,
               ),
             ),
+
             const SizedBox(width: 13),
+
             Expanded(
               child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+                crossAxisAlignment:
+                CrossAxisAlignment.start,
                 children: [
                   Text(
                     title,
                     style: TextStyle(
                       fontSize: 15,
                       fontWeight: FontWeight.bold,
-                      color: isDanger ? Colors.red : textColor,
+                      color:
+                      isDanger ? Colors.red : textColor,
                     ),
                   ),
+
                   if (subtitle.isNotEmpty) ...[
                     const SizedBox(height: 3),
                     Text(
                       subtitle,
                       style: TextStyle(
                         fontSize: 12,
-                        color: textColor.withOpacity(0.55),
+                        color:
+                        textColor.withOpacity(0.55),
                       ),
                     ),
                   ],
                 ],
               ),
             ),
+
             if (!isDanger)
               Icon(
                 Icons.arrow_back_ios_new_rounded,
+                textDirection: TextDirection.ltr,
                 size: 16,
-                color: textColor.withOpacity(0.45),
+                color:
+                textColor.withOpacity(0.45),
               ),
           ],
         ),

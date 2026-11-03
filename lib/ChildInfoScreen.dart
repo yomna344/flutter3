@@ -1,17 +1,21 @@
+
 import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 
-import 'HomeScreen.dart';
 import 'validators.dart';
 import 'MainNavigationScreen.dart';
 import 'ChildStore.dart';
+import 'services/child_service.dart';
 
 class ChildInfoScreen extends StatefulWidget {
   final bool showBackButton;
   final bool isEditMode;
   final bool returnToProfileAfterSave;
+
+  // رقم الطفل الحقيقي في قاعدة البيانات
+  final int? childId;
 
   final String? initialFirstName;
   final String? initialSecondName;
@@ -20,7 +24,6 @@ class ChildInfoScreen extends StatefulWidget {
   final DateTime? initialBirthDate;
   final String? initialDiabetesType;
   final DateTime? initialDiagnosisDate;
-  final String? initialAllergy;
   final String? initialNotes;
   final String? initialImagePath;
 
@@ -29,6 +32,7 @@ class ChildInfoScreen extends StatefulWidget {
     this.showBackButton = false,
     this.isEditMode = false,
     this.returnToProfileAfterSave = false,
+    this.childId,
     this.initialFirstName,
     this.initialSecondName,
     this.initialLastName,
@@ -36,7 +40,6 @@ class ChildInfoScreen extends StatefulWidget {
     this.initialBirthDate,
     this.initialDiabetesType,
     this.initialDiagnosisDate,
-    this.initialAllergy,
     this.initialNotes,
     this.initialImagePath,
   });
@@ -47,26 +50,32 @@ class ChildInfoScreen extends StatefulWidget {
 }
 
 class _ChildInfoScreenState extends State<ChildInfoScreen> {
-  final GlobalKey<FormState> formKey = GlobalKey<FormState>();
+  final GlobalKey<FormState> formKey =
+  GlobalKey<FormState>();
+
   final GlobalKey imageKey = GlobalKey();
 
   final TextEditingController firstNameController =
   TextEditingController();
+
   final TextEditingController secondNameController =
   TextEditingController();
+
   final TextEditingController lastNameController =
   TextEditingController();
-  final TextEditingController allergyController =
-  TextEditingController();
+
   final TextEditingController notesController =
   TextEditingController();
+
   final TextEditingController customDiabetesTypeController =
   TextEditingController();
 
   final FocusNode firstNameFocusNode = FocusNode();
   final FocusNode secondNameFocusNode = FocusNode();
   final FocusNode lastNameFocusNode = FocusNode();
-  final FocusNode customDiabetesTypeFocusNode = FocusNode();
+
+  final FocusNode customDiabetesTypeFocusNode =
+  FocusNode();
 
   final ImagePicker imagePicker = ImagePicker();
 
@@ -81,10 +90,17 @@ class _ChildInfoScreenState extends State<ChildInfoScreen> {
   bool isOtherDiabetesType = false;
   bool isSaving = false;
 
+  // هل اختار ولي الأمر صورة جديدة؟
+  bool imageChanged = false;
+
   String? genderError;
   String? birthDateError;
   String? diabetesTypeError;
   String? diagnosisDateError;
+
+  // =====================================
+  // Initial Data
+  // =====================================
 
   @override
   void initState() {
@@ -92,14 +108,22 @@ class _ChildInfoScreenState extends State<ChildInfoScreen> {
 
     if (widget.isEditMode) {
       if (widget.initialImagePath != null &&
-          widget.initialImagePath!.isNotEmpty) {
+          widget.initialImagePath!.isNotEmpty &&
+          File(widget.initialImagePath!).existsSync()) {
         selectedImage = XFile(widget.initialImagePath!);
       }
-      firstNameController.text = widget.initialFirstName ?? '';
-      secondNameController.text = widget.initialSecondName ?? '';
-      lastNameController.text = widget.initialLastName ?? '';
-      allergyController.text = widget.initialAllergy ?? '';
-      notesController.text = widget.initialNotes ?? '';
+
+      firstNameController.text =
+          widget.initialFirstName ?? '';
+
+      secondNameController.text =
+          widget.initialSecondName ?? '';
+
+      lastNameController.text =
+          widget.initialLastName ?? '';
+
+      notesController.text =
+          widget.initialNotes ?? '';
 
       selectedGender = widget.initialGender;
       birthDate = widget.initialBirthDate;
@@ -108,7 +132,8 @@ class _ChildInfoScreenState extends State<ChildInfoScreen> {
       final String type =
           widget.initialDiabetesType?.trim() ?? '';
 
-      if (type == 'النوع الأول' || type == 'النوع الثاني') {
+      if (type == 'النوع الأول' ||
+          type == 'النوع الثاني') {
         selectedDiabetesType = type;
       } else if (type.isNotEmpty) {
         isOtherDiabetesType = true;
@@ -117,14 +142,15 @@ class _ChildInfoScreenState extends State<ChildInfoScreen> {
     }
   }
 
-  // =========================
+  // =====================================
   // Validation
-  // =========================
+  // =====================================
 
   bool validateGender() {
     setState(() {
-      genderError =
-      selectedGender == null ? 'يجب اختيار جنس الطفل' : null;
+      genderError = selectedGender == null
+          ? 'يجب اختيار جنس الطفل'
+          : null;
     });
 
     return genderError == null;
@@ -174,15 +200,22 @@ class _ChildInfoScreenState extends State<ChildInfoScreen> {
       }
 
       if (diagnosisDate!.isBefore(birthDate!)) {
-        diagnosisDateError = 'التاريخ قبل الميلاد غير مسموح';
+        diagnosisDateError =
+        'التاريخ قبل الميلاد غير مسموح';
         return;
       }
 
       final now = DateTime.now();
-      final today = DateTime(now.year, now.month, now.day);
+
+      final today = DateTime(
+        now.year,
+        now.month,
+        now.day,
+      );
 
       if (diagnosisDate!.isAfter(today)) {
-        diagnosisDateError = 'لا يمكن اختيار تاريخ مستقبلي';
+        diagnosisDateError =
+        'لا يمكن اختيار تاريخ مستقبلي';
         return;
       }
 
@@ -192,13 +225,16 @@ class _ChildInfoScreenState extends State<ChildInfoScreen> {
     return diagnosisDateError == null;
   }
 
-  // =========================
+  // =====================================
   // Birth Date
-  // =========================
+  // =====================================
 
   Future<void> selectBirthDate() async {
-    final earliestDate = Validators.earliestChildBirthDate();
-    final latestDate = Validators.latestChildBirthDate();
+    final earliestDate =
+    Validators.earliestChildBirthDate();
+
+    final latestDate =
+    Validators.latestChildBirthDate();
 
     DateTime initialDate = birthDate ??
         DateTime(
@@ -239,9 +275,9 @@ class _ChildInfoScreenState extends State<ChildInfoScreen> {
     });
   }
 
-  // =========================
+  // =====================================
   // Diagnosis Date
-  // =========================
+  // =====================================
 
   Future<void> selectDiagnosisDate() async {
     if (birthDate == null) {
@@ -249,12 +285,20 @@ class _ChildInfoScreenState extends State<ChildInfoScreen> {
         birthDateError = 'اختر تاريخ الميلاد أولاً';
       });
 
-      showTemporaryMessage('اختر تاريخ ميلاد الطفل أولاً');
+      showTemporaryMessage(
+        'اختر تاريخ ميلاد الطفل أولاً',
+      );
+
       return;
     }
 
     final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
+
+    final today = DateTime(
+      now.year,
+      now.month,
+      now.day,
+    );
 
     final firstAllowedDate = DateTime(
       birthDate!.year,
@@ -290,9 +334,9 @@ class _ChildInfoScreenState extends State<ChildInfoScreen> {
     });
   }
 
-  // =========================
+  // =====================================
   // Diabetes Type
-  // =========================
+  // =====================================
 
   void selectOtherDiabetesType() {
     setState(() {
@@ -328,18 +372,20 @@ class _ChildInfoScreenState extends State<ChildInfoScreen> {
     return selectedDiabetesType ?? '';
   }
 
-  // =========================
+  // =====================================
   // Image Options
-  // =========================
+  // =====================================
 
   Future<void> showImageOptions() async {
     if (isSaving) return;
 
     final imageBox =
-    imageKey.currentContext?.findRenderObject() as RenderBox?;
+    imageKey.currentContext?.findRenderObject()
+    as RenderBox?;
 
     final overlayBox =
-    Overlay.of(context).context.findRenderObject() as RenderBox?;
+    Overlay.of(context).context.findRenderObject()
+    as RenderBox?;
 
     if (imageBox == null || overlayBox == null) return;
 
@@ -356,6 +402,7 @@ class _ChildInfoScreenState extends State<ChildInfoScreen> {
     );
 
     final overlayRect = Offset.zero & overlayBox.size;
+
     final theme = Theme.of(context);
 
     final String? option = await showMenu<String>(
@@ -391,6 +438,7 @@ class _ChildInfoScreenState extends State<ChildInfoScreen> {
             ),
           ),
         ),
+
         PopupMenuItem<String>(
           value: 'camera',
           child: Directionality(
@@ -439,6 +487,9 @@ class _ChildInfoScreenState extends State<ChildInfoScreen> {
 
       setState(() {
         selectedImage = image;
+
+        // صورة جديدة تم اختيارها
+        imageChanged = true;
       });
 
       showTemporaryMessage(
@@ -459,29 +510,25 @@ class _ChildInfoScreenState extends State<ChildInfoScreen> {
     }
   }
 
-  // =========================
+  // =====================================
   // Date Formatting
-  // =========================
+  // =====================================
 
   String formatDate(DateTime? date) {
     if (date == null) return '';
 
-    final day = date.day.toString().padLeft(2, '0');
-    final month = date.month.toString().padLeft(2, '0');
+    final day =
+    date.day.toString().padLeft(2, '0');
+
+    final month =
+    date.month.toString().padLeft(2, '0');
 
     return '$day/$month/${date.year}';
   }
 
-  String formatApiDate(DateTime date) {
-    final month = date.month.toString().padLeft(2, '0');
-    final day = date.day.toString().padLeft(2, '0');
-
-    return '${date.year}-$month-$day';
-  }
-
-  // =========================
+  // =====================================
   // Messages
-  // =========================
+  // =====================================
 
   void showTemporaryMessage(String message) {
     if (!mounted) return;
@@ -495,27 +542,29 @@ class _ChildInfoScreenState extends State<ChildInfoScreen> {
           textAlign: TextAlign.center,
         ),
         behavior: SnackBarBehavior.floating,
-        duration: const Duration(seconds: 2),
+        duration: const Duration(seconds: 3),
       ),
     );
   }
 
-  // =========================
-  // Save Information
-  // =========================
+  // =====================================
+  // Save Child Information
+  // Laravel API + ChildStore
+  // =====================================
 
   Future<void> saveChildInformation() async {
     if (isSaving) return;
 
     FocusScope.of(context).unfocus();
 
-    final formIsValid =
+    final bool formIsValid =
         formKey.currentState?.validate() ?? false;
 
-    final genderIsValid = validateGender();
-    final birthDateIsValid = validateBirthDate();
-    final diabetesTypeIsValid = validateDiabetesType();
-    final diagnosisDateIsValid = validateDiagnosisDate();
+    final bool genderIsValid = validateGender();
+    final bool birthDateIsValid = validateBirthDate();
+    final bool diabetesTypeIsValid = validateDiabetesType();
+    final bool diagnosisDateIsValid =
+    validateDiagnosisDate();
 
     if (!formIsValid ||
         !genderIsValid ||
@@ -525,15 +574,17 @@ class _ChildInfoScreenState extends State<ChildInfoScreen> {
       return;
     }
 
-    setState(() {
-      isSaving = true;
-    });
+    final String firstName =
+    firstNameController.text.trim();
 
-    final firstName = firstNameController.text.trim();
-    final secondName = secondNameController.text.trim();
-    final lastName = lastNameController.text.trim();
-    final allergy = allergyController.text.trim();
-    final notes = notesController.text.trim();
+    final String secondName =
+    secondNameController.text.trim();
+
+    final String lastName =
+    lastNameController.text.trim();
+
+    final String notes =
+    notesController.text.trim();
 
     final childData = <String, dynamic>{
       'firstName': firstName,
@@ -543,72 +594,158 @@ class _ChildInfoScreenState extends State<ChildInfoScreen> {
       'birthDate': birthDate!,
       'diabetesType': finalDiabetesType,
       'diagnosisDate': diagnosisDate!,
-      'allergy': allergy,
       'notes': notes,
-      'imagePath': selectedImage?.path,
+      'imagePath': imageChanged
+          ? selectedImage?.path
+          : widget.initialImagePath,
     };
 
-    // محاكاة الحفظ مؤقتًا حتى ربط Laravel.
-    await Future.delayed(const Duration(seconds: 1));
-
-    if (!mounted) return;
+    // التأكد من معرف الطفل عند التعديل
+    if (widget.isEditMode && widget.childId == null) {
+      showTemporaryMessage(
+        'تعذر تحديد الطفل المطلوب تعديله.',
+      );
+      return;
+    }
 
     setState(() {
-      isSaving = false;
+      isSaving = true;
     });
 
-    // تعديل بيانات طفل موجود.
-    if (widget.isEditMode) {
-      Navigator.pop(context, childData);
-      return;
-    }
+    try {
+      // =====================================
+      // تعديل طفل موجود في Laravel
+      // =====================================
 
-    // إنشاء نموذج الطفل.
-    final child = ChildModel(
-      localId: DateTime.now().microsecondsSinceEpoch.toString(),
-      firstName: firstName,
-      middleName: secondName,
-      lastName: lastName,
-      gender: selectedGender!,
-      birthDate: birthDate!,
-      imagePath: selectedImage?.path,
-      diabetesType: finalDiabetesType,
-      diagnosisDate: diagnosisDate,
-      allergy: allergy,
-      notes: notes,
-    );
+      if (widget.isEditMode) {
+        await ChildService.updateChild(
+          childId: widget.childId!,
+          firstName: firstName,
+          middleName: secondName,
+          lastName: lastName,
+          gender: selectedGender!,
+          birthDate: birthDate!,
+          diabetesType: finalDiabetesType,
+          diagnosisDate: diagnosisDate!,
+          notes: notes,
+          imagePath: imageChanged
+              ? selectedImage?.path
+              : null,
+        );
 
-    // حفظ الطفل في المخزن المحلي.
-    ChildStore.instance.addChild(child);
+        if (!mounted) return;
 
-    // إذا كانت الإضافة من الملف الشخصي،
-    // نرجع إليه مع بيانات الطفل الجديد.
-    if (widget.returnToProfileAfterSave) {
-      Navigator.pop(context, childData);
-      return;
-    }
+        // الرجوع للملف الشخصي بعد نجاح الحفظ
+        Navigator.pop(context, childData);
+        return;
+      }
 
-    // الطفل الأول: الانتقال إلى واجهات التطبيق.
-    Navigator.pushReplacement(
-      context,
-      MaterialPageRoute(
-        builder: (context) => MainNavigationScreen(
-          childName: child.fullName,
-          birthDate: child.birthDate,
-          gender: child.gender,
-          childImagePath: child.imagePath,
+      // =====================================
+      // إضافة طفل جديد في Laravel
+      // =====================================
+
+      final Map<String, dynamic> result =
+      await ChildService.addChild(
+        firstName: firstName,
+        middleName: secondName,
+        lastName: lastName,
+        gender: selectedGender!,
+        birthDate: birthDate!,
+        diabetesType: finalDiabetesType,
+        diagnosisDate: diagnosisDate!,
+        notes: notes,
+        imagePath: selectedImage?.path,
+      );
+
+      if (!mounted) return;
+
+      // جلب child_id الحقيقي من Laravel
+      final savedChild =
+      result['child'] as Map<String, dynamic>;
+
+      final int? serverId = int.tryParse(
+        savedChild['child_id'].toString(),
+      );
+
+      if (serverId == null) {
+        throw Exception(
+          'تم استلام بيانات طفل بدون معرّف صحيح.',
+        );
+      }
+
+      // =====================================
+      // حفظ الطفل في ChildStore
+      // لتحديث الواجهات الحالية
+      // =====================================
+
+      final child = ChildModel(
+        id: serverId,
+        localId: 'server:$serverId',
+        firstName: firstName,
+        middleName: secondName,
+        lastName: lastName,
+        gender: selectedGender!,
+        birthDate: birthDate!,
+        imagePath: selectedImage?.path,
+        diabetesType: finalDiabetesType,
+        diagnosisDate: diagnosisDate,
+        notes: notes,
+      );
+
+      ChildStore.instance.addChild(child);
+
+      // =====================================
+      // إضافة الطفل من الملف الشخصي
+      // =====================================
+
+      if (widget.returnToProfileAfterSave) {
+        Navigator.pop(context, childData);
+        return;
+      }
+
+      // =====================================
+      // الانتقال إلى الواجهة الرئيسية
+      // =====================================
+
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(
+          builder: (context) => MainNavigationScreen(
+            childName: child.fullName,
+            birthDate: child.birthDate,
+            gender: child.gender,
+            childImagePath: child.imagePath,
+          ),
         ),
-      ),
-    );
+      );
+    } catch (error) {
+      if (!mounted) return;
+
+      final String message = error
+          .toString()
+          .replaceFirst('Exception: ', '');
+
+      showTemporaryMessage(message);
+    } finally {
+      if (mounted) {
+        setState(() {
+          isSaving = false;
+        });
+      }
+    }
   }
+
+  // =====================================
+  // Dispose
+  // =====================================
 
   @override
   void dispose() {
     firstNameController.dispose();
     secondNameController.dispose();
     lastNameController.dispose();
-    allergyController.dispose();
     notesController.dispose();
+
     customDiabetesTypeController.dispose();
 
     firstNameFocusNode.dispose();
@@ -619,18 +756,23 @@ class _ChildInfoScreenState extends State<ChildInfoScreen> {
     super.dispose();
   }
 
-  // =========================
+  // =====================================
   // Main Screen
-  // =========================
+  // =====================================
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+
     final primaryColor = theme.primaryColor;
     final darkColor = theme.colorScheme.onSurface;
     final fieldColor = theme.cardColor;
-    final borderColor = darkColor.withOpacity(0.14);
-    final hintColor = darkColor.withOpacity(0.52);
+
+    final borderColor =
+    darkColor.withOpacity(0.14);
+
+    final hintColor =
+    darkColor.withOpacity(0.52);
 
     return Scaffold(
       body: SafeArea(
@@ -640,8 +782,11 @@ class _ChildInfoScreenState extends State<ChildInfoScreen> {
             final screenHeight = constraints.maxHeight;
 
             final isVerySmall = screenWidth < 390;
+
             final isSmallScreen =
-                screenWidth < 430 || screenHeight < 650;
+                screenWidth < 430 ||
+                    screenHeight < 650;
+
             final isTablet = screenWidth >= 600;
 
             final horizontalPadding = isVerySmall
@@ -659,7 +804,8 @@ class _ChildInfoScreenState extends State<ChildInfoScreen> {
             return Directionality(
               textDirection: TextDirection.rtl,
               child: SingleChildScrollView(
-                physics: const BouncingScrollPhysics(),
+                physics:
+                const BouncingScrollPhysics(),
                 padding: EdgeInsets.symmetric(
                   horizontal: horizontalPadding,
                   vertical: isSmallScreen ? 14 : 18,
@@ -672,9 +818,13 @@ class _ChildInfoScreenState extends State<ChildInfoScreen> {
                     child: Form(
                       key: formKey,
                       child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.center,
+                        crossAxisAlignment:
+                        CrossAxisAlignment.center,
                         children: [
+                          // =========================
                           // Title
+                          // =========================
+
                           Stack(
                             alignment: Alignment.center,
                             children: [
@@ -690,21 +840,27 @@ class _ChildInfoScreenState extends State<ChildInfoScreen> {
                                   ),
                                 ),
                               ),
+
                               if (widget.showBackButton)
                                 Align(
                                   alignment:
-                                  AlignmentDirectional.centerStart,
+                                  AlignmentDirectional
+                                      .centerStart,
                                   child: IconButton(
                                     onPressed: isSaving
                                         ? null
-                                        : () => Navigator.pop(context),
+                                        : () {
+                                      Navigator.pop(context);
+                                    },
                                     padding: EdgeInsets.zero,
-                                    constraints: const BoxConstraints(
+                                    constraints:
+                                    const BoxConstraints(
                                       minWidth: 44,
                                       minHeight: 44,
                                     ),
                                     icon: Icon(
-                                      Icons.arrow_back_ios_new_rounded,
+                                      Icons
+                                          .arrow_back_ios_new_rounded,
                                       color: darkColor,
                                       size: 22,
                                     ),
@@ -713,42 +869,57 @@ class _ChildInfoScreenState extends State<ChildInfoScreen> {
                             ],
                           ),
 
-                          SizedBox(height: isSmallScreen ? 15 : 20),
+                          SizedBox(
+                            height: isSmallScreen ? 15 : 20,
+                          ),
 
+                          // =========================
                           // Profile Image
+                          // =========================
+
                           InkWell(
                             key: imageKey,
-                            onTap: isSaving ? null : showImageOptions,
+                            onTap:
+                            isSaving ? null : showImageOptions,
                             borderRadius:
-                            BorderRadius.circular(imageSize / 2),
+                            BorderRadius.circular(
+                              imageSize / 2,
+                            ),
                             child: Stack(
-                              alignment: Alignment.bottomLeft,
+                              alignment:
+                              Alignment.bottomLeft,
                               children: [
                                 Container(
                                   width: imageSize,
                                   height: imageSize,
                                   decoration: BoxDecoration(
-                                    color:
-                                    primaryColor.withOpacity(0.12),
+                                    color: primaryColor
+                                        .withOpacity(0.12),
                                     shape: BoxShape.circle,
                                     border: Border.all(
-                                      color:
-                                      primaryColor.withOpacity(0.35),
+                                      color: primaryColor
+                                          .withOpacity(0.35),
                                       width: 2,
                                     ),
                                   ),
                                   child: selectedImage != null
                                       ? ClipOval(
                                     child: Image.file(
-                                      File(selectedImage!.path),
+                                      File(
+                                        selectedImage!.path,
+                                      ),
                                       width: imageSize,
                                       height: imageSize,
                                       fit: BoxFit.cover,
-                                      errorBuilder:
-                                          (context, error, stackTrace) {
+                                      errorBuilder: (
+                                          context,
+                                          error,
+                                          stackTrace,
+                                          ) {
                                         return Icon(
                                           Icons.person_rounded,
-                                          size: imageSize * 0.57,
+                                          size:
+                                          imageSize * 0.57,
                                           color: primaryColor,
                                         );
                                       },
@@ -760,6 +931,7 @@ class _ChildInfoScreenState extends State<ChildInfoScreen> {
                                     color: primaryColor,
                                   ),
                                 ),
+
                                 Container(
                                   width: 38,
                                   height: 38,
@@ -783,18 +955,14 @@ class _ChildInfoScreenState extends State<ChildInfoScreen> {
 
                           const SizedBox(height: 6),
 
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-
-                              const SizedBox(width: 5),
-
-                            ],
+                          SizedBox(
+                            height: isSmallScreen ? 18 : 24,
                           ),
 
-                          SizedBox(height: isSmallScreen ? 18 : 24),
-
+                          // =========================
                           // Names
+                          // =========================
+
                           _buildNameFields(
                             isVerySmall: isVerySmall,
                             primaryColor: primaryColor,
@@ -806,24 +974,32 @@ class _ChildInfoScreenState extends State<ChildInfoScreen> {
 
                           const SizedBox(height: 16),
 
-                          // Gender: girl and boy icons
+                          // =========================
+                          // Gender
+                          // =========================
+
                           Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
+                            crossAxisAlignment:
+                            CrossAxisAlignment.start,
                             children: [
                               Container(
                                 width: double.infinity,
-                                padding: const EdgeInsets.symmetric(
+                                padding:
+                                const EdgeInsets.symmetric(
                                   horizontal: 8,
                                   vertical: 6,
                                 ),
                                 decoration: BoxDecoration(
                                   color: fieldColor,
-                                  borderRadius: BorderRadius.circular(14),
+                                  borderRadius:
+                                  BorderRadius.circular(14),
                                   border: Border.all(
                                     color: genderError == null
                                         ? borderColor
                                         : Colors.red,
-                                    width: genderError == null ? 1.2 : 1.5,
+                                    width: genderError == null
+                                        ? 1.2
+                                        : 1.5,
                                   ),
                                 ),
                                 child: Row(
@@ -833,7 +1009,9 @@ class _ChildInfoScreenState extends State<ChildInfoScreen> {
                                       color: primaryColor,
                                       size: 21,
                                     ),
+
                                     const SizedBox(width: 4),
+
                                     Text(
                                       'الجنس',
                                       style: TextStyle(
@@ -841,28 +1019,38 @@ class _ChildInfoScreenState extends State<ChildInfoScreen> {
                                         fontSize: 13,
                                       ),
                                     ),
-                                    const SizedBox(width: 100),
+
+                                    const Spacer(),
+
                                     genderChoice(
                                       title: 'بنت',
-                                      icon: Icons.face_3_rounded,
+                                      icon:
+                                      Icons.face_3_rounded,
                                       value: 'بنت',
-                                      primaryColor: primaryColor,
+                                      primaryColor:
+                                      primaryColor,
                                       textColor: darkColor,
                                     ),
-                                    const SizedBox(width: 30),
+
+                                    const SizedBox(width: 12),
+
                                     genderChoice(
                                       title: 'ولد',
-                                      icon: Icons.face_6_rounded,
+                                      icon:
+                                      Icons.face_6_rounded,
                                       value: 'ولد',
-                                      primaryColor: primaryColor,
+                                      primaryColor:
+                                      primaryColor,
                                       textColor: darkColor,
                                     ),
                                   ],
                                 ),
                               ),
+
                               if (genderError != null)
                                 Padding(
-                                  padding: const EdgeInsets.only(
+                                  padding:
+                                  const EdgeInsets.only(
                                     top: 6,
                                     right: 12,
                                   ),
@@ -879,21 +1067,30 @@ class _ChildInfoScreenState extends State<ChildInfoScreen> {
 
                           const SizedBox(height: 16),
 
-                          // Birth Date + Diabetes
+                          // =========================
+                          // Birth Date + Diabetes Type
+                          // =========================
+
                           if (isVerySmall)
                             Column(
                               children: [
                                 _buildBirthDateField(
-                                  primaryColor: primaryColor,
-                                  borderColor: borderColor,
+                                  primaryColor:
+                                  primaryColor,
+                                  borderColor:
+                                  borderColor,
                                   hintColor: hintColor,
                                   darkColor: darkColor,
                                   fieldColor: fieldColor,
                                 ),
+
                                 const SizedBox(height: 16),
+
                                 _buildDiabetesField(
-                                  primaryColor: primaryColor,
-                                  borderColor: borderColor,
+                                  primaryColor:
+                                  primaryColor,
+                                  borderColor:
+                                  borderColor,
                                   hintColor: hintColor,
                                   darkColor: darkColor,
                                   fieldColor: fieldColor,
@@ -907,18 +1104,24 @@ class _ChildInfoScreenState extends State<ChildInfoScreen> {
                               children: [
                                 Expanded(
                                   child: _buildBirthDateField(
-                                    primaryColor: primaryColor,
-                                    borderColor: borderColor,
+                                    primaryColor:
+                                    primaryColor,
+                                    borderColor:
+                                    borderColor,
                                     hintColor: hintColor,
                                     darkColor: darkColor,
                                     fieldColor: fieldColor,
                                   ),
                                 ),
+
                                 const SizedBox(width: 10),
+
                                 Expanded(
                                   child: _buildDiabetesField(
-                                    primaryColor: primaryColor,
-                                    borderColor: borderColor,
+                                    primaryColor:
+                                    primaryColor,
+                                    borderColor:
+                                    borderColor,
                                     hintColor: hintColor,
                                     darkColor: darkColor,
                                     fieldColor: fieldColor,
@@ -929,28 +1132,39 @@ class _ChildInfoScreenState extends State<ChildInfoScreen> {
 
                           const SizedBox(height: 16),
 
+                          // =========================
                           // Diagnosis Date
+                          // =========================
+
                           InkWell(
-                            onTap:
-                            isSaving ? null : selectDiagnosisDate,
-                            borderRadius: BorderRadius.circular(14),
+                            onTap: isSaving
+                                ? null
+                                : selectDiagnosisDate,
+                            borderRadius:
+                            BorderRadius.circular(14),
                             child: InputDecorator(
-                              decoration: buildInputDecoration(
+                              decoration:
+                              buildInputDecoration(
                                 hint: '',
-                                icon: Icons.event_note_outlined,
+                                icon: Icons
+                                    .event_note_outlined,
                                 primaryColor: primaryColor,
                                 borderColor: borderColor,
                                 fieldColor: fieldColor,
                                 hintColor: hintColor,
-                                errorText: diagnosisDateError,
+                                errorText:
+                                diagnosisDateError,
                               ),
                               child: Text(
                                 diagnosisDate == null
                                     ? 'تاريخ الإصابة بالمرض'
-                                    : formatDate(diagnosisDate),
+                                    : formatDate(
+                                  diagnosisDate,
+                                ),
                                 textAlign: TextAlign.right,
                                 style: TextStyle(
-                                  color: diagnosisDate == null
+                                  color:
+                                  diagnosisDate == null
                                       ? hintColor
                                       : darkColor,
                                   fontSize: 14,
@@ -959,45 +1173,28 @@ class _ChildInfoScreenState extends State<ChildInfoScreen> {
                             ),
                           ),
 
-                          const SizedBox(height: 16),
+                          const SizedBox(height: 28),
 
-                          // Allergy
-                          TextFormField(
-                            controller: allergyController,
-                            enabled: !isSaving,
-                            textAlign: TextAlign.right,
-                            textDirection: TextDirection.rtl,
-                            keyboardType: TextInputType.text,
-                            minLines: 1,
-                            maxLines: 1,
-                            style: TextStyle(color: darkColor),
-                            decoration: buildInputDecoration(
-                              hint: 'الحساسية',
-                              icon: Icons.health_and_safety_outlined,
-                              primaryColor: primaryColor,
-                              borderColor: borderColor,
-                              fieldColor: fieldColor,
-                              hintColor: hintColor,
-                              errorText: null,
-                            ),
-                          ),
-
-                          const SizedBox(height: 12),
-
+                          // =========================
                           // Additional Notes
+                          // =========================
+
                           TextFormField(
                             controller: notesController,
                             enabled: !isSaving,
                             textAlign: TextAlign.right,
-                            textDirection: TextDirection.rtl,
-                            keyboardType: TextInputType.multiline,
+                            textDirection:
+                            TextDirection.rtl,
+                            keyboardType:
+                            TextInputType.multiline,
                             minLines: 1,
                             maxLines: 2,
                             style: TextStyle(
                               color: darkColor,
                               fontSize: 14,
                             ),
-                            decoration: buildInputDecoration(
+                            decoration:
+                            buildInputDecoration(
                               hint: 'ملاحظات إضافية ',
                               icon: Icons.notes_rounded,
                               primaryColor: primaryColor,
@@ -1016,13 +1213,20 @@ class _ChildInfoScreenState extends State<ChildInfoScreen> {
                           ),
 
                           SizedBox(
-                            height: isSmallScreen ? 20 : 25,
+                            height: isSmallScreen
+                                ? 20
+                                : 25,
                           ),
 
+                          // =========================
                           // Save Button
+                          // =========================
+
                           SizedBox(
                             width: double.infinity,
-                            height: isSmallScreen ? 52 : 56,
+                            height: isSmallScreen
+                                ? 52
+                                : 56,
                             child: ElevatedButton(
                               onPressed: isSaving
                                   ? null
@@ -1031,7 +1235,8 @@ class _ChildInfoScreenState extends State<ChildInfoScreen> {
                                   ? const SizedBox(
                                 width: 25,
                                 height: 25,
-                                child: CircularProgressIndicator(
+                                child:
+                                CircularProgressIndicator(
                                   color: Colors.white,
                                   strokeWidth: 2.5,
                                 ),
@@ -1042,8 +1247,11 @@ class _ChildInfoScreenState extends State<ChildInfoScreen> {
                                     : 'حفظ المعلومات',
                                 style: TextStyle(
                                   fontSize:
-                                  isSmallScreen ? 16 : 18,
-                                  fontWeight: FontWeight.bold,
+                                  isSmallScreen
+                                      ? 16
+                                      : 18,
+                                  fontWeight:
+                                  FontWeight.bold,
                                 ),
                               ),
                             ),
@@ -1051,12 +1259,14 @@ class _ChildInfoScreenState extends State<ChildInfoScreen> {
 
                           if (isSaving) ...[
                             const SizedBox(height: 12),
+
                             Text(
                               'جاري حفظ المعلومات...',
                               style: TextStyle(
                                 fontSize: 14,
                                 color: primaryColor,
-                                fontWeight: FontWeight.w600,
+                                fontWeight:
+                                FontWeight.w600,
                               ),
                             ),
                           ],
@@ -1075,9 +1285,9 @@ class _ChildInfoScreenState extends State<ChildInfoScreen> {
     );
   }
 
-  // =========================
+  // =====================================
   // Gender Choice
-  // =========================
+  // =====================================
 
   Widget genderChoice({
     required String title,
@@ -1086,7 +1296,8 @@ class _ChildInfoScreenState extends State<ChildInfoScreen> {
     required Color primaryColor,
     required Color textColor,
   }) {
-    final bool isSelected = selectedGender == value;
+    final bool isSelected =
+        selectedGender == value;
 
     return InkWell(
       onTap: isSaving
@@ -1107,7 +1318,8 @@ class _ChildInfoScreenState extends State<ChildInfoScreen> {
           color: isSelected
               ? primaryColor.withOpacity(0.10)
               : Colors.transparent,
-          borderRadius: BorderRadius.circular(10),
+          borderRadius:
+          BorderRadius.circular(10),
           border: Border.all(
             color: isSelected
                 ? primaryColor
@@ -1116,7 +1328,8 @@ class _ChildInfoScreenState extends State<ChildInfoScreen> {
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
-          mainAxisAlignment: MainAxisAlignment.center,
+          mainAxisAlignment:
+          MainAxisAlignment.center,
           children: [
             Icon(
               icon,
@@ -1125,7 +1338,9 @@ class _ChildInfoScreenState extends State<ChildInfoScreen> {
                   ? primaryColor
                   : textColor.withOpacity(0.65),
             ),
+
             const SizedBox(width: 4),
+
             Text(
               title,
               style: TextStyle(
@@ -1144,9 +1359,9 @@ class _ChildInfoScreenState extends State<ChildInfoScreen> {
     );
   }
 
-  // =========================
+  // =====================================
   // Name Fields
-  // =========================
+  // =====================================
 
   Widget _buildNameFields({
     required bool isVerySmall,
@@ -1204,7 +1419,8 @@ class _ChildInfoScreenState extends State<ChildInfoScreen> {
     }
 
     return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
+      crossAxisAlignment:
+      CrossAxisAlignment.start,
       children: [
         Expanded(child: firstName),
         const SizedBox(width: 7),
@@ -1233,15 +1449,20 @@ class _ChildInfoScreenState extends State<ChildInfoScreen> {
       keyboardType: TextInputType.name,
       textAlign: TextAlign.center,
       textDirection: TextDirection.rtl,
-      style: TextStyle(color: textColor),
+      style: TextStyle(
+        color: textColor,
+      ),
       textInputAction: nextFocus == null
           ? TextInputAction.done
           : TextInputAction.next,
-      autovalidateMode: AutovalidateMode.onUserInteraction,
+      autovalidateMode:
+      AutovalidateMode.onUserInteraction,
       validator: Validators.arabicName,
       onFieldSubmitted: (_) {
         if (nextFocus != null) {
-          FocusScope.of(context).requestFocus(nextFocus);
+          FocusScope.of(context).requestFocus(
+            nextFocus,
+          );
         } else {
           FocusScope.of(context).unfocus();
         }
@@ -1256,9 +1477,9 @@ class _ChildInfoScreenState extends State<ChildInfoScreen> {
     );
   }
 
-  // =========================
+  // =====================================
   // Birth Date Field
-  // =========================
+  // =====================================
 
   Widget _buildBirthDateField({
     required Color primaryColor,
@@ -1269,7 +1490,8 @@ class _ChildInfoScreenState extends State<ChildInfoScreen> {
   }) {
     return InkWell(
       onTap: isSaving ? null : selectBirthDate,
-      borderRadius: BorderRadius.circular(14),
+      borderRadius:
+      BorderRadius.circular(14),
       child: InputDecorator(
         decoration: buildInputDecoration(
           hint: '',
@@ -1286,7 +1508,9 @@ class _ChildInfoScreenState extends State<ChildInfoScreen> {
               : formatDate(birthDate),
           textAlign: TextAlign.right,
           style: TextStyle(
-            color: birthDate == null ? hintColor : darkColor,
+            color: birthDate == null
+                ? hintColor
+                : darkColor,
             fontSize: 14,
           ),
         ),
@@ -1294,9 +1518,9 @@ class _ChildInfoScreenState extends State<ChildInfoScreen> {
     );
   }
 
-  // =========================
+  // =====================================
   // Diabetes Field
-  // =========================
+  // =====================================
 
   Widget _buildDiabetesField({
     required Color primaryColor,
@@ -1307,22 +1531,37 @@ class _ChildInfoScreenState extends State<ChildInfoScreen> {
   }) {
     if (isOtherDiabetesType) {
       return TextFormField(
-        controller: customDiabetesTypeController,
-        focusNode: customDiabetesTypeFocusNode,
+        controller:
+        customDiabetesTypeController,
+        focusNode:
+        customDiabetesTypeFocusNode,
         enabled: !isSaving,
         autofocus: true,
         textAlign: TextAlign.right,
         textDirection: TextDirection.rtl,
-        style: TextStyle(color: darkColor),
-        autovalidateMode: AutovalidateMode.onUserInteraction,
+        style: TextStyle(
+          color: darkColor,
+        ),
+        autovalidateMode:
+        AutovalidateMode.onUserInteraction,
         validator: (value) {
           final text = value?.trim() ?? '';
 
-          if (text.isEmpty) return 'اكتب نوع السكري';
-          if (text.length < 2) return 'النص قصير';
-          if (text.length > 30) return 'النص طويل';
+          if (text.isEmpty) {
+            return 'اكتب نوع السكري';
+          }
 
-          final regex = RegExp(r'^[A-Za-z\u0621-\u064A0-9 ]+$');
+          if (text.length < 2) {
+            return 'النص قصير';
+          }
+
+          if (text.length > 30) {
+            return 'النص طويل';
+          }
+
+          final regex = RegExp(
+            r'^[A-Za-z\u0621-\u064A0-9 ]+$',
+          );
 
           if (!regex.hasMatch(text)) {
             return 'أدخل حروف وأرقام فقط';
@@ -1352,8 +1591,9 @@ class _ChildInfoScreenState extends State<ChildInfoScreen> {
         ).copyWith(
           suffixIcon: IconButton(
             tooltip: 'الرجوع للخيارات',
-            onPressed:
-            isSaving ? null : returnToDiabetesOptions,
+            onPressed: isSaving
+                ? null
+                : returnToDiabetesOptions,
             icon: Icon(
               Icons.keyboard_arrow_down_rounded,
               color: darkColor,
@@ -1365,7 +1605,8 @@ class _ChildInfoScreenState extends State<ChildInfoScreen> {
 
     return Directionality(
       textDirection: TextDirection.rtl,
-      child: DropdownButtonFormField<String>(
+      child:
+      DropdownButtonFormField<String>(
         value: selectedDiabetesType,
         isExpanded: true,
         dropdownColor: fieldColor,
@@ -1373,7 +1614,8 @@ class _ChildInfoScreenState extends State<ChildInfoScreen> {
           color: darkColor,
           fontSize: 14,
         ),
-        alignment: AlignmentDirectional.centerStart,
+        alignment:
+        AlignmentDirectional.centerStart,
         decoration: buildInputDecoration(
           hint: 'نوع السكري',
           icon: Icons.water_drop_outlined,
@@ -1431,9 +1673,9 @@ class _ChildInfoScreenState extends State<ChildInfoScreen> {
     );
   }
 
-  // =========================
-  // Name Decoration
-  // =========================
+  // =====================================
+  // Name Input Decoration
+  // =====================================
 
   InputDecoration nameInputDecoration({
     required String hint,
@@ -1455,33 +1697,39 @@ class _ChildInfoScreenState extends State<ChildInfoScreen> {
       ),
       filled: true,
       fillColor: fieldColor,
-      contentPadding: const EdgeInsets.symmetric(
+      contentPadding:
+      const EdgeInsets.symmetric(
         horizontal: 8,
         vertical: 17,
       ),
       enabledBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(12),
+        borderRadius:
+        BorderRadius.circular(12),
         borderSide: BorderSide(
           color: borderColor,
           width: 1.2,
         ),
       ),
       focusedBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(12),
+        borderRadius:
+        BorderRadius.circular(12),
         borderSide: BorderSide(
           color: primaryColor,
           width: 2,
         ),
       ),
       errorBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(12),
+        borderRadius:
+        BorderRadius.circular(12),
         borderSide: const BorderSide(
           color: Colors.red,
           width: 1.2,
         ),
       ),
-      focusedErrorBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(12),
+      focusedErrorBorder:
+      OutlineInputBorder(
+        borderRadius:
+        BorderRadius.circular(12),
         borderSide: const BorderSide(
           color: Colors.red,
           width: 2,
@@ -1490,9 +1738,9 @@ class _ChildInfoScreenState extends State<ChildInfoScreen> {
     );
   }
 
-  // =========================
-  // General Decoration
-  // =========================
+  // =====================================
+  // General Input Decoration
+  // =====================================
 
   InputDecoration buildInputDecoration({
     required String hint,
@@ -1521,33 +1769,39 @@ class _ChildInfoScreenState extends State<ChildInfoScreen> {
       ),
       filled: true,
       fillColor: fieldColor,
-      contentPadding: const EdgeInsets.symmetric(
+      contentPadding:
+      const EdgeInsets.symmetric(
         horizontal: 14,
         vertical: 15,
       ),
       enabledBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(14),
+        borderRadius:
+        BorderRadius.circular(14),
         borderSide: BorderSide(
           color: borderColor,
           width: 1.3,
         ),
       ),
       focusedBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(14),
+        borderRadius:
+        BorderRadius.circular(14),
         borderSide: BorderSide(
           color: primaryColor,
           width: 2,
         ),
       ),
       errorBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(14),
+        borderRadius:
+        BorderRadius.circular(14),
         borderSide: const BorderSide(
           color: Colors.red,
           width: 1.3,
         ),
       ),
-      focusedErrorBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(14),
+      focusedErrorBorder:
+      OutlineInputBorder(
+        borderRadius:
+        BorderRadius.circular(14),
         borderSide: const BorderSide(
           color: Colors.red,
           width: 2,

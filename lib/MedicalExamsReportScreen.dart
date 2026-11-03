@@ -112,30 +112,6 @@ class MedicalExamsReportScreen extends StatelessWidget {
             pw.SizedBox(height: 14),
 
             _pdfDetail(
-              'اسم الفحص الطبي',
-              'ستظهر أسماء الفحوصات المسجلة للطفل.',
-              arabicFont,
-            ),
-
-            _pdfDetail(
-              'تاريخ الفحص',
-              'ستظهر تواريخ إجراء الفحوصات خلال الفترة المحددة.',
-              arabicFont,
-            ),
-
-            _pdfDetail(
-              'نتيجة الفحص',
-              'ستظهر نتائج الفحوصات المسجلة عند توفرها.',
-              arabicFont,
-            ),
-
-            _pdfDetail(
-              'ملاحظات الفحص',
-              'ستظهر الملاحظات المرتبطة بالفحوصات المسجلة.',
-              arabicFont,
-            ),
-
-            _pdfDetail(
               'مرفقات الفحوصات',
               'ستظهر معلومات ملفات النتائج المرفقة عند توفرها.',
               arabicFont,
@@ -420,66 +396,6 @@ class MedicalExamsReportScreen extends StatelessWidget {
                             fontWeight: FontWeight.bold,
                             color: textColor,
                           ),
-                        ),
-
-                        const SizedBox(height: 14),
-
-                        _detailCard(
-                          icon: Icons.biotech_outlined,
-                          title: 'اسم الفحص الطبي',
-                          description:
-                          'ستظهر أسماء الفحوصات المسجلة للطفل.',
-                          primaryColor: primaryColor,
-                          cardColor: cardColor,
-                          borderColor: borderColor,
-                          textColor: textColor,
-                          secondaryTextColor:
-                          secondaryTextColor,
-                        ),
-
-                        const SizedBox(height: 12),
-
-                        _detailCard(
-                          icon: Icons.event_outlined,
-                          title: 'تاريخ الفحص',
-                          description:
-                          'ستظهر تواريخ إجراء الفحوصات خلال الفترة المحددة.',
-                          primaryColor: primaryColor,
-                          cardColor: cardColor,
-                          borderColor: borderColor,
-                          textColor: textColor,
-                          secondaryTextColor:
-                          secondaryTextColor,
-                        ),
-
-                        const SizedBox(height: 12),
-
-                        _detailCard(
-                          icon: Icons.assignment_turned_in_outlined,
-                          title: 'نتيجة الفحص',
-                          description:
-                          'ستظهر نتائج الفحوصات المسجلة عند توفرها.',
-                          primaryColor: primaryColor,
-                          cardColor: cardColor,
-                          borderColor: borderColor,
-                          textColor: textColor,
-                          secondaryTextColor:
-                          secondaryTextColor,
-                        ),
-
-                        const SizedBox(height: 12),
-
-                        _detailCard(
-                          icon: Icons.notes_outlined,
-                          title: 'ملاحظات الفحص',
-                          description:
-                          'ستظهر الملاحظات المرتبطة بالفحوصات المسجلة.',
-                          primaryColor: primaryColor,
-                          cardColor: cardColor,
-                          borderColor: borderColor,
-                          textColor: textColor,
-                          secondaryTextColor:
-                          secondaryTextColor,
                         ),
 
                         const SizedBox(height: 12),

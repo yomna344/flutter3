@@ -1,9 +1,12 @@
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 import 'LoginScreen.dart';
 import 'ChildInfoScreen.dart';
 import 'validators.dart';
+import 'services/auth_service.dart';
 
 class SignUpScreen extends StatefulWidget {
   const SignUpScreen({super.key});
@@ -24,9 +27,6 @@ class _SignUpScreenState extends State<SignUpScreen> {
   final TextEditingController lastNameController =
   TextEditingController();
 
-  final TextEditingController usernameController =
-  TextEditingController();
-
   final TextEditingController phoneController =
   TextEditingController();
 
@@ -43,9 +43,6 @@ class _SignUpScreenState extends State<SignUpScreen> {
   bool isPasswordFocused = false;
   bool isLoading = false;
 
-  // مفتاح اليمن ثابت
-  static const String countryCode = '967';
-
   @override
   void initState() {
     super.initState();
@@ -59,95 +56,91 @@ class _SignUpScreenState extends State<SignUpScreen> {
     });
   }
 
+  // =====================================
+  // إنشاء حساب ولي الأمر عبر Laravel
+  // =====================================
+
   Future<void> createAccount() async {
     FocusScope.of(context).unfocus();
+
+    if (isLoading) return;
 
     final bool isValid =
         formKey.currentState?.validate() ?? false;
 
     if (!isValid) return;
 
-    // الرقم المحلي 9 أرقام، ونضيف مفتاح اليمن تلقائيًا
-    final String localPhone = phoneController.text.trim();
-
-    final String cleanPhone = '$countryCode$localPhone';
-
-    final String firstName =
-    firstNameController.text.trim();
-
-    final String username =
-    usernameController.text.trim();
-
-    final String secondName =
-    secondNameController.text.trim();
-
-    final String lastName =
-    lastNameController.text.trim();
-
     setState(() {
       isLoading = true;
     });
 
-    /*
-      سيتم ربط إنشاء الحساب بقاعدة بيانات Laravel لاحقًا.
+    try {
+      // إرسال بيانات التسجيل إلى Laravel
+      final Map<String, dynamic> result =
+      await AuthService.register(
+        firstName: firstNameController.text.trim(),
+        middleName: secondNameController.text.trim(),
+        lastName: lastNameController.text.trim(),
+        phone: phoneController.text.trim(),
+        password: passwordController.text,
+      );
 
-      POST /api/register
+      // استلام Token بعد نجاح التسجيل
+      final String token = result['token'] as String;
 
-      البيانات:
-      first_name
-      middle_name
-      last_name
-      username
-      phone
-      password
+      // حفظ Token بأمان
+      const FlutterSecureStorage storage =
+      FlutterSecureStorage();
 
-      رقم الهاتف سيرسل بصيغة:
-      967XXXXXXXXX
+      await storage.write(
+        key: 'auth_token',
+        value: token,
+      );
 
-      Laravel سيتحقق من البيانات، ويتأكد من عدم تكرار
-      رقم الهاتف، ويشفّر كلمة المرور، ثم ينشئ الحساب.
-    */
+      if (!mounted) return;
 
-    debugPrint('First name: $firstName');
-    debugPrint('Username entered: ${username.isNotEmpty}');
-    debugPrint('Second name: $secondName');
-    debugPrint('Last name: $lastName');
-    debugPrint('Phone: $cleanPhone');
-
-    await Future.delayed(const Duration(seconds: 1));
-
-    if (!mounted) return;
-
-    setState(() {
-      isLoading = false;
-    });
-
-    ScaffoldMessenger.of(context).hideCurrentSnackBar();
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text(
-          'تم إنشاء الحساب بنجاح',
-          textAlign: TextAlign.center,
+      // الانتقال بعد نجاح التسجيل الحقيقي
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(
+          builder: (context) => const ChildInfoScreen(),
         ),
-        behavior: SnackBarBehavior.floating,
-        duration: Duration(seconds: 1),
-      ),
-    );
+      );
+    } catch (error) {
+      if (!mounted) return;
 
-    await Future.delayed(const Duration(seconds: 1));
+      final String message = error
+          .toString()
+          .replaceFirst('Exception: ', '');
 
-    if (!mounted) return;
+      ScaffoldMessenger.of(context).hideCurrentSnackBar();
 
-    Navigator.pushReplacement(
-      context,
-      MaterialPageRoute(
-        builder: (context) => const ChildInfoScreen(),
-      ),
-    );
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            message,
+            textAlign: TextAlign.center,
+          ),
+          behavior: SnackBarBehavior.floating,
+          duration: const Duration(seconds: 4),
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          isLoading = false;
+        });
+      }
+    }
   }
 
+  // =====================================
+  // الانتقال إلى تسجيل الدخول
+  // =====================================
+
   void goToLogin() {
+    if (isLoading) return;
+
     FocusScope.of(context).unfocus();
 
     if (Navigator.canPop(context)) {
@@ -168,7 +161,6 @@ class _SignUpScreenState extends State<SignUpScreen> {
     firstNameController.dispose();
     secondNameController.dispose();
     lastNameController.dispose();
-    usernameController.dispose();
     phoneController.dispose();
     passwordController.dispose();
 
@@ -302,32 +294,27 @@ class _SignUpScreenState extends State<SignUpScreen> {
                             children: [
                               Expanded(
                                 child: TextFormField(
-                                  controller:
-                                  firstNameController,
-                                  focusNode:
-                                  firstNameFocusNode,
+                                  controller: firstNameController,
+                                  focusNode: firstNameFocusNode,
+                                  enabled: !isLoading,
                                   style: TextStyle(
                                     color: textColor,
                                   ),
                                   cursorColor: primaryColor,
                                   textAlign: TextAlign.center,
-                                  keyboardType:
-                                  TextInputType.name,
-                                  textInputAction:
-                                  TextInputAction.next,
+                                  keyboardType: TextInputType.name,
+                                  textInputAction: TextInputAction.next,
                                   autovalidateMode:
                                   AutovalidateMode
                                       .onUserInteraction,
-                                  validator:
-                                  Validators.arabicName,
+                                  validator: Validators.arabicName,
                                   onFieldSubmitted: (_) {
                                     FocusScope.of(context)
                                         .requestFocus(
                                       secondNameFocusNode,
                                     );
                                   },
-                                  decoration:
-                                  nameInputDecoration(
+                                  decoration: nameInputDecoration(
                                     hint: 'الاسم الأول',
                                     primaryColor: primaryColor,
                                     borderColor: borderColor,
@@ -341,32 +328,27 @@ class _SignUpScreenState extends State<SignUpScreen> {
 
                               Expanded(
                                 child: TextFormField(
-                                  controller:
-                                  secondNameController,
-                                  focusNode:
-                                  secondNameFocusNode,
+                                  controller: secondNameController,
+                                  focusNode: secondNameFocusNode,
+                                  enabled: !isLoading,
                                   style: TextStyle(
                                     color: textColor,
                                   ),
                                   cursorColor: primaryColor,
                                   textAlign: TextAlign.center,
-                                  keyboardType:
-                                  TextInputType.name,
-                                  textInputAction:
-                                  TextInputAction.next,
+                                  keyboardType: TextInputType.name,
+                                  textInputAction: TextInputAction.next,
                                   autovalidateMode:
                                   AutovalidateMode
                                       .onUserInteraction,
-                                  validator:
-                                  Validators.arabicName,
+                                  validator: Validators.arabicName,
                                   onFieldSubmitted: (_) {
                                     FocusScope.of(context)
                                         .requestFocus(
                                       lastNameFocusNode,
                                     );
                                   },
-                                  decoration:
-                                  nameInputDecoration(
+                                  decoration: nameInputDecoration(
                                     hint: 'الاسم الثاني',
                                     primaryColor: primaryColor,
                                     borderColor: borderColor,
@@ -380,32 +362,27 @@ class _SignUpScreenState extends State<SignUpScreen> {
 
                               Expanded(
                                 child: TextFormField(
-                                  controller:
-                                  lastNameController,
-                                  focusNode:
-                                  lastNameFocusNode,
+                                  controller: lastNameController,
+                                  focusNode: lastNameFocusNode,
+                                  enabled: !isLoading,
                                   style: TextStyle(
                                     color: textColor,
                                   ),
                                   cursorColor: primaryColor,
                                   textAlign: TextAlign.center,
-                                  keyboardType:
-                                  TextInputType.name,
-                                  textInputAction:
-                                  TextInputAction.next,
+                                  keyboardType: TextInputType.name,
+                                  textInputAction: TextInputAction.next,
                                   autovalidateMode:
                                   AutovalidateMode
                                       .onUserInteraction,
-                                  validator:
-                                  Validators.arabicName,
+                                  validator: Validators.arabicName,
                                   onFieldSubmitted: (_) {
                                     FocusScope.of(context)
                                         .requestFocus(
                                       phoneFocusNode,
                                     );
                                   },
-                                  decoration:
-                                  nameInputDecoration(
+                                  decoration: nameInputDecoration(
                                     hint: 'اللقب',
                                     primaryColor: primaryColor,
                                     borderColor: borderColor,
@@ -419,8 +396,8 @@ class _SignUpScreenState extends State<SignUpScreen> {
 
                           const SizedBox(height: 16),
 
-                          // Username
-                          // الحقل غير ظاهر في التصميم الحالي
+                          // نفس المسافة في التصميم الأصلي
+                          // لا يوجد حقل Username
 
                           const SizedBox(height: 16),
 
@@ -431,6 +408,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
                           TextFormField(
                             controller: phoneController,
                             focusNode: phoneFocusNode,
+                            enabled: !isLoading,
                             style: TextStyle(
                               color: textColor,
                             ),
@@ -438,28 +416,22 @@ class _SignUpScreenState extends State<SignUpScreen> {
                             keyboardType: TextInputType.phone,
                             textDirection: TextDirection.ltr,
                             textAlign: TextAlign.right,
-                            textInputAction:
-                            TextInputAction.next,
-                            validator:
-                            Validators.supportedPhone,
+                            textInputAction: TextInputAction.next,
+                            validator: Validators.supportedPhone,
                             autovalidateMode:
-                            AutovalidateMode
-                                .onUserInteraction,
+                            AutovalidateMode.onUserInteraction,
                             inputFormatters: [
-                              FilteringTextInputFormatter
-                                  .digitsOnly,
+                              FilteringTextInputFormatter.digitsOnly,
                               LengthLimitingTextInputFormatter(9),
                             ],
                             onFieldSubmitted: (_) {
-                              FocusScope.of(context)
-                                  .requestFocus(
+                              FocusScope.of(context).requestFocus(
                                 passwordFocusNode,
                               );
                             },
                             decoration: InputDecoration(
                               hintText: 'رقم الهاتف',
-                              hintTextDirection:
-                              TextDirection.rtl,
+                              hintTextDirection: TextDirection.rtl,
                               hintStyle: TextStyle(
                                 color: hintColor,
                                 fontSize: 16,
@@ -475,8 +447,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
 
                               // علم اليمن ومفتاح الدولة ثابتان
                               suffixIcon: Padding(
-                                padding:
-                                const EdgeInsets.symmetric(
+                                padding: const EdgeInsets.symmetric(
                                   horizontal: 12,
                                 ),
                                 child: Center(
@@ -514,8 +485,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
                                 horizontal: 16,
                                 vertical: 18,
                               ),
-                              enabledBorder:
-                              OutlineInputBorder(
+                              enabledBorder: OutlineInputBorder(
                                 borderRadius:
                                 BorderRadius.circular(14),
                                 borderSide: BorderSide(
@@ -523,8 +493,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
                                   width: 1.3,
                                 ),
                               ),
-                              focusedBorder:
-                              OutlineInputBorder(
+                              focusedBorder: OutlineInputBorder(
                                 borderRadius:
                                 BorderRadius.circular(14),
                                 borderSide: BorderSide(
@@ -532,8 +501,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
                                   width: 2,
                                 ),
                               ),
-                              errorBorder:
-                              OutlineInputBorder(
+                              errorBorder: OutlineInputBorder(
                                 borderRadius:
                                 BorderRadius.circular(14),
                                 borderSide: const BorderSide(
@@ -562,6 +530,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
                           TextFormField(
                             controller: passwordController,
                             focusNode: passwordFocusNode,
+                            enabled: !isLoading,
                             style: TextStyle(
                               color: textColor,
                             ),
@@ -569,17 +538,13 @@ class _SignUpScreenState extends State<SignUpScreen> {
                             obscureText: obscurePassword,
                             keyboardType: TextInputType.number,
                             textAlign: TextAlign.right,
-                            textInputAction:
-                            TextInputAction.done,
+                            textInputAction: TextInputAction.done,
                             maxLength: 6,
-                            validator:
-                            Validators.sixDigitPassword,
+                            validator: Validators.sixDigitPassword,
                             autovalidateMode:
-                            AutovalidateMode
-                                .onUserInteraction,
+                            AutovalidateMode.onUserInteraction,
                             inputFormatters: [
-                              FilteringTextInputFormatter
-                                  .digitsOnly,
+                              FilteringTextInputFormatter.digitsOnly,
                               LengthLimitingTextInputFormatter(6),
                             ],
                             onFieldSubmitted: (_) {
@@ -609,7 +574,9 @@ class _SignUpScreenState extends State<SignUpScreen> {
                                 color: primaryColor,
                               ),
                               suffixIcon: IconButton(
-                                onPressed: () {
+                                onPressed: isLoading
+                                    ? null
+                                    : () {
                                   setState(() {
                                     obscurePassword =
                                     !obscurePassword;
@@ -632,8 +599,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
                                 horizontal: 16,
                                 vertical: 18,
                               ),
-                              enabledBorder:
-                              OutlineInputBorder(
+                              enabledBorder: OutlineInputBorder(
                                 borderRadius:
                                 BorderRadius.circular(14),
                                 borderSide: BorderSide(
@@ -641,8 +607,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
                                   width: 1.3,
                                 ),
                               ),
-                              focusedBorder:
-                              OutlineInputBorder(
+                              focusedBorder: OutlineInputBorder(
                                 borderRadius:
                                 BorderRadius.circular(14),
                                 borderSide: BorderSide(
@@ -650,8 +615,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
                                   width: 2,
                                 ),
                               ),
-                              errorBorder:
-                              OutlineInputBorder(
+                              errorBorder: OutlineInputBorder(
                                 borderRadius:
                                 BorderRadius.circular(14),
                                 borderSide: const BorderSide(
@@ -690,8 +654,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
                                 foregroundColor: Colors.white,
                                 disabledBackgroundColor:
                                 primaryColor.withOpacity(0.55),
-                                disabledForegroundColor:
-                                Colors.white,
+                                disabledForegroundColor: Colors.white,
                                 elevation: 0,
                                 shape: RoundedRectangleBorder(
                                   borderRadius:
@@ -727,8 +690,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
 
                           Container(
                             width: double.infinity,
-                            padding:
-                            const EdgeInsets.symmetric(
+                            padding: const EdgeInsets.symmetric(
                               horizontal: 16,
                               vertical: 14,
                             ),
@@ -756,7 +718,8 @@ class _SignUpScreenState extends State<SignUpScreen> {
                                 ),
                                 const SizedBox(width: 8),
                                 InkWell(
-                                  onTap: goToLogin,
+                                  onTap:
+                                  isLoading ? null : goToLogin,
                                   borderRadius:
                                   BorderRadius.circular(12),
                                   child: Padding(
@@ -766,8 +729,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
                                       vertical: 6,
                                     ),
                                     child: Row(
-                                      mainAxisSize:
-                                      MainAxisSize.min,
+                                      mainAxisSize: MainAxisSize.min,
                                       children: [
                                         Icon(
                                           Icons.login,
@@ -797,9 +759,9 @@ class _SignUpScreenState extends State<SignUpScreen> {
     );
   }
 
-  // =========================
+  // =====================================
   // Name Input Decoration
-  // =========================
+  // =====================================
 
   InputDecoration nameInputDecoration({
     required String hint,

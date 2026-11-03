@@ -1,8 +1,11 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class MedicalExamScreen extends StatefulWidget {
   final String childName;
@@ -23,141 +26,25 @@ class MedicalExamScreen extends StatefulWidget {
 }
 
 class _MedicalExamScreenState extends State<MedicalExamScreen> {
-
-  final TextEditingController examNameController =
-  TextEditingController();
-
-  final TextEditingController examResultController =
-  TextEditingController();
-
-  final TextEditingController measurementUnitController =
-  TextEditingController();
-
-  final TextEditingController notesController =
-  TextEditingController();
-
   final ImagePicker imagePicker = ImagePicker();
 
-  DateTime? examDate;
-  String? examDateError;
-
-  bool isSaving = false;
   bool isPickingAttachment = false;
+  bool isSavingAttachment = false;
+  bool showAttachmentError = false;
 
   String? selectedAttachmentType;
   XFile? selectedImage;
   PlatformFile? selectedFile;
 
-  DateTime dateOnly(DateTime date) {
-    return DateTime(date.year, date.month, date.day);
-  }
+  static const String recordsStorageKey = 'tinyguide_medical_exam_records';
 
-  String formatDate(DateTime? date) {
-    if (date == null) return '';
-
-    final String day = date.day.toString().padLeft(2, '0');
-    final String month = date.month.toString().padLeft(2, '0');
-
-    return '$day/$month/${date.year}';
-  }
-
-  String formatApiDate(DateTime date) {
-    final String month = date.month.toString().padLeft(2, '0');
-    final String day = date.day.toString().padLeft(2, '0');
-
-    return '${date.year}-$month-$day';
-  }
-
-  String? validateExamName(String? value) {
-    final String text = value?.trim() ?? '';
-
-    if (text.isEmpty) return 'مطلوب';
-    if (text.length < 2) return 'اسم الفحص قصير';
-    if (text.length > 80) return 'اسم الفحص طويل';
-    if (text.contains('  ')) return 'اسم الفحص غير صحيح';
-
-    return null;
-  }
-
-  String? validateExamResult(String? value) {
-    final String text = value?.trim() ?? '';
-
-    if (text.isEmpty) return 'مطلوب';
-    if (text.length > 100) return 'النتيجة طويلة';
-
-    return null;
-  }
-
-  String? validateMeasurementUnit(String? value) {
-    final String text = value?.trim() ?? '';
-
-    if (text.isEmpty) return null;
-    if (text.length > 30) return 'الوحدة طويلة';
-
-    return null;
-  }
-
-  String? validateNotes(String? value) {
-    final String text = value?.trim() ?? '';
-
-    if (text.length > 200) {
-      return 'الحد الأقصى 200 حرف';
-    }
-
-    return null;
-  }
-
-  Future<void> selectExamDate() async {
-    final DateTime today = dateOnly(DateTime.now());
-    final DateTime birthDate = dateOnly(widget.birthDate);
-
-    if (birthDate.isAfter(today)) {
-      showTemporaryMessage(
-        'تاريخ ميلاد الطفل لا يمكن أن يكون في المستقبل',
-      );
-      return;
-    }
-
-    DateTime initialDate = examDate ?? today;
-
-    if (initialDate.isBefore(birthDate)) {
-      initialDate = birthDate;
-    }
-
-    if (initialDate.isAfter(today)) {
-      initialDate = today;
-    }
-
-    final DateTime? selectedDate = await showDatePicker(
-      context: context,
-      initialDate: initialDate,
-      firstDate: birthDate,
-      lastDate: today,
-      helpText: 'اختيار تاريخ الفحص',
-      cancelText: 'إلغاء',
-      confirmText: 'اختيار',
-    );
-
-    if (selectedDate == null || !mounted) return;
-
-    setState(() {
-      examDate = selectedDate;
-      examDateError = null;
-    });
-  }
-
-  bool validateExamDate() {
-    setState(() {
-      examDateError = examDate == null ? 'مطلوب' : null;
-    });
-
-    return examDateError == null;
-  }
+  bool get hasAttachment =>
+      selectedImage != null || selectedFile != null;
 
   Future<void> showAttachmentOptions(
       TapDownDetails details,
       ) async {
-    if (isSaving || isPickingAttachment) return;
+    if (isPickingAttachment || isSavingAttachment) return;
 
     final ThemeData theme = Theme.of(context);
 
@@ -245,7 +132,7 @@ class _MedicalExamScreenState extends State<MedicalExamScreen> {
                 const SizedBox(width: 10),
                 Expanded(
                   child: Text(
-                    'اختيار ملف',
+                    'اختيار ملف PDF أو صورة',
                     style: TextStyle(
                       color: theme.colorScheme.onSurface,
                     ),
@@ -274,7 +161,7 @@ class _MedicalExamScreenState extends State<MedicalExamScreen> {
   }
 
   Future<void> pickImageFromGallery() async {
-    if (isPickingAttachment || isSaving) return;
+    if (isPickingAttachment || isSavingAttachment) return;
 
     setState(() {
       isPickingAttachment = true;
@@ -292,6 +179,7 @@ class _MedicalExamScreenState extends State<MedicalExamScreen> {
         selectedImage = image;
         selectedFile = null;
         selectedAttachmentType = 'gallery';
+        showAttachmentError = false;
       });
 
       showTemporaryMessage('تم اختيار الصورة بنجاح');
@@ -313,7 +201,7 @@ class _MedicalExamScreenState extends State<MedicalExamScreen> {
   }
 
   Future<void> takePicture() async {
-    if (isPickingAttachment || isSaving) return;
+    if (isPickingAttachment || isSavingAttachment) return;
 
     setState(() {
       isPickingAttachment = true;
@@ -331,6 +219,7 @@ class _MedicalExamScreenState extends State<MedicalExamScreen> {
         selectedImage = image;
         selectedFile = null;
         selectedAttachmentType = 'camera';
+        showAttachmentError = false;
       });
 
       showTemporaryMessage('تم التقاط الصورة بنجاح');
@@ -352,7 +241,7 @@ class _MedicalExamScreenState extends State<MedicalExamScreen> {
   }
 
   Future<void> pickFile() async {
-    if (isPickingAttachment || isSaving) return;
+    if (isPickingAttachment || isSavingAttachment) return;
 
     setState(() {
       isPickingAttachment = true;
@@ -361,7 +250,14 @@ class _MedicalExamScreenState extends State<MedicalExamScreen> {
     try {
       final FilePickerResult? result =
       await FilePicker.pickFiles(
-        type: FileType.any,
+        type: FileType.custom,
+        allowedExtensions: [
+          'pdf',
+          'jpg',
+          'jpeg',
+          'png',
+          'webp',
+        ],
         allowMultiple: false,
       );
 
@@ -377,16 +273,17 @@ class _MedicalExamScreenState extends State<MedicalExamScreen> {
         selectedFile = file;
         selectedImage = null;
         selectedAttachmentType = 'file';
+        showAttachmentError = false;
       });
 
       showTemporaryMessage('تم اختيار الملف بنجاح');
     } catch (e) {
+      debugPrint('File picker error: $e');
+
       if (mounted) {
         showTemporaryMessage(
           'تعذر فتح الملفات. حاولي مرة أخرى.',
         );
-
-        debugPrint('File picker error: $e');
       }
     } finally {
       if (mounted) {
@@ -398,12 +295,13 @@ class _MedicalExamScreenState extends State<MedicalExamScreen> {
   }
 
   void removeAttachment() {
-    if (isSaving || isPickingAttachment) return;
+    if (isPickingAttachment || isSavingAttachment) return;
 
     setState(() {
       selectedAttachmentType = null;
       selectedImage = null;
       selectedFile = null;
+      showAttachmentError = false;
     });
 
     showTemporaryMessage('تم إلغاء المرفق');
@@ -418,7 +316,7 @@ class _MedicalExamScreenState extends State<MedicalExamScreen> {
       return selectedFile!.name;
     }
 
-    return 'اضغط لإرفاق صورة أو ملف (اختياري)';
+    return 'اضغط لإرفاق صورة أو ملف';
   }
 
   void showTemporaryMessage(String message) {
@@ -438,90 +336,167 @@ class _MedicalExamScreenState extends State<MedicalExamScreen> {
     );
   }
 
-  Future<void> saveMedicalExam() async {
-    if (isSaving || isPickingAttachment) return;
+  bool isAllowedAttachment(String name) {
+    final String extension = name.split('.').last.toLowerCase();
 
-    FocusScope.of(context).unfocus();
-
-
-
-    final String examName = examNameController.text.trim();
-    final String examResult = examResultController.text.trim();
-    final String measurementUnit =
-    measurementUnitController.text.trim();
-    final String notes = notesController.text.trim();
-
-    /*
-      مستقبلًا عند ربط Laravel:
-
-      POST /api/children/{childId}/medical-exams
-
-      Authorization: Bearer TOKEN
-
-      {
-        "exam_name": examName,
-        "exam_result": examResult,
-        "measurement_unit": measurementUnit,
-        "exam_date": formatApiDate(examDate!),
-        "notes": notes
-      }
-
-      رفع المرفقات يحتاج إرسالها إلى API
-      وحفظ مسار الملف في قاعدة البيانات.
-    */
-
-    debugPrint('Exam name: $examName');
-    debugPrint('Exam result: $examResult');
-    debugPrint('Unit: $measurementUnit');
-    debugPrint('Date: ${formatApiDate(examDate!)}');
-    debugPrint('Notes: $notes');
-    debugPrint('Attachment type: $selectedAttachmentType');
-
-    debugPrint(
-      'Attachment path: '
-          '${selectedImage?.path ?? selectedFile?.path ?? "لا يوجد"}',
-    );
-
-    await Future.delayed(const Duration(seconds: 2));
-
-    if (!mounted) return;
-
-    examNameController.clear();
-    examResultController.clear();
-    measurementUnitController.clear();
-    notesController.clear();
-
-    setState(() {
-      isSaving = false;
-      examDate = null;
-      examDateError = null;
-      selectedAttachmentType = null;
-      selectedImage = null;
-      selectedFile = null;
-    });
-
-    ScaffoldMessenger.of(context).hideCurrentSnackBar();
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text(
-          'تم حفظ بيانات الفحص الطبي بنجاح',
-          textAlign: TextAlign.center,
-        ),
-        behavior: SnackBarBehavior.floating,
-        duration: Duration(seconds: 2),
-      ),
-    );
+    return [
+      'pdf',
+      'jpg',
+      'jpeg',
+      'png',
+      'webp',
+    ].contains(extension);
   }
 
-  @override
-  void dispose() {
-    examNameController.dispose();
-    examResultController.dispose();
-    measurementUnitController.dispose();
-    notesController.dispose();
+  String attachmentKind(String name) {
+    final String extension = name.split('.').last.toLowerCase();
 
-    super.dispose();
+    return extension == 'pdf' ? 'pdf' : 'image';
+  }
+
+  Future<void> saveMedicalExam() async {
+    if (isPickingAttachment || isSavingAttachment) return;
+
+    if (!hasAttachment) {
+      setState(() {
+        showAttachmentError = true;
+      });
+
+      showTemporaryMessage(
+        'يرجى إرفاق صورة أو ملف للفحص الطبي أولاً',
+      );
+      return;
+    }
+
+    final String originalName =
+        selectedImage?.name ?? selectedFile!.name;
+
+    final String? sourcePath =
+        selectedImage?.path ?? selectedFile?.path;
+
+    if (!isAllowedAttachment(originalName)) {
+      showTemporaryMessage(
+        'يسمح بإرفاق الصور وملفات PDF فقط',
+      );
+      return;
+    }
+
+    if (sourcePath == null || sourcePath.isEmpty) {
+      showTemporaryMessage(
+        'تعذر الوصول إلى الملف المحدد',
+      );
+      return;
+    }
+
+    setState(() {
+      isSavingAttachment = true;
+      showAttachmentError = false;
+    });
+
+    File? copiedFile;
+
+    try {
+      final File sourceFile = File(sourcePath);
+
+      if (!await sourceFile.exists()) {
+        throw Exception('Source file not found');
+      }
+
+      final Directory appDirectory =
+      await getApplicationDocumentsDirectory();
+
+      final Directory examsDirectory = Directory(
+        '${appDirectory.path}${Platform.pathSeparator}medical_exams',
+      );
+
+      if (!await examsDirectory.exists()) {
+        await examsDirectory.create(recursive: true);
+      }
+
+      final DateTime savedAt = DateTime.now();
+
+      final String extension =
+      originalName.split('.').last.toLowerCase();
+
+      final String uniqueId =
+          '${savedAt.microsecondsSinceEpoch}';
+
+      final String storedFileName = '$uniqueId.$extension';
+
+      final String destinationPath =
+          '${examsDirectory.path}${Platform.pathSeparator}$storedFileName';
+
+      copiedFile = await sourceFile.copy(destinationPath);
+
+      final SharedPreferences preferences =
+      await SharedPreferences.getInstance();
+
+      final List<String> savedRecords =
+          preferences.getStringList(recordsStorageKey) ?? [];
+
+      final Map<String, dynamic> newRecord = {
+        'id': uniqueId,
+        'childName': widget.childName,
+        'fileName': originalName,
+        'filePath': copiedFile.path,
+        'fileType': attachmentKind(originalName),
+        'savedAt': savedAt.toIso8601String(),
+      };
+
+      savedRecords.insert(0, jsonEncode(newRecord));
+
+      final bool savedSuccessfully =
+      await preferences.setStringList(
+        recordsStorageKey,
+        savedRecords,
+      );
+
+      if (!savedSuccessfully) {
+        throw Exception('Failed to save record metadata');
+      }
+
+      if (!mounted) return;
+
+      setState(() {
+        selectedImage = null;
+        selectedFile = null;
+        selectedAttachmentType = null;
+        showAttachmentError = false;
+      });
+
+      showTemporaryMessage('تم حفظ المرفق بنجاح');
+
+      // نرجع للشاشة السابقة بعد نجاح الحفظ.
+      // شاشة السجلات ستقرأ البيانات المحفوظة في الخطوة التالية.
+      await Future.delayed(const Duration(milliseconds: 600));
+
+      if (mounted) {
+        Navigator.pop(context, true);
+      }
+    } catch (e) {
+      debugPrint('Save medical exam error: $e');
+
+      // إذا فشل تسجيل بيانات المرفق، نحذف النسخة التي أنشأناها.
+      if (copiedFile != null && await copiedFile.exists()) {
+        try {
+          await copiedFile.delete();
+        } catch (deleteError) {
+          debugPrint('Cleanup error: $deleteError');
+        }
+      }
+
+      if (mounted) {
+        showTemporaryMessage(
+          'تعذر حفظ المرفق. حاولي مرة أخرى.',
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          isSavingAttachment = false;
+        });
+      }
+    }
   }
 
   @override
@@ -532,8 +507,7 @@ class _MedicalExamScreenState extends State<MedicalExamScreen> {
     final Color darkColor = theme.colorScheme.onSurface;
     final Color cardColor = theme.cardColor;
 
-    final bool isDark =
-        theme.brightness == Brightness.dark;
+    final bool isDark = theme.brightness == Brightness.dark;
 
     final Color borderColor = isDark
         ? darkColor.withOpacity(0.14)
@@ -576,647 +550,367 @@ class _MedicalExamScreenState extends State<MedicalExamScreen> {
                     constraints: const BoxConstraints(
                       maxWidth: 720,
                     ),
-                    child: Form(
-                      child: Column(
-                        children: [
-                          // Header
-                          SizedBox(
-                            height: 48,
-                            child: Stack(
-                              alignment: Alignment.center,
-                              children: [
-                                Text(
-                                  'تسجيل فحص طبي',
-                                  textAlign: TextAlign.center,
-                                  style: TextStyle(
-                                    fontSize:
-                                    isVerySmall ? 18 : 22,
-                                    fontWeight: FontWeight.bold,
-                                    color: darkColor,
-                                  ),
-                                ),
-
-                                Align(
-                                  alignment: AlignmentDirectional
-                                      .centerStart,
-                                  child: IconButton(
-                                    onPressed: isSaving
-                                        ? null
-                                        : () {
-                                      Navigator.pop(context);
-                                    },
-                                    padding: EdgeInsets.zero,
-                                    constraints:
-                                    const BoxConstraints(
-                                      minWidth: 44,
-                                      minHeight: 44,
-                                    ),
-                                    icon: Icon(
-                                      Icons.arrow_back_ios_new_rounded,
-                                      color: darkColor,
-                                      size: 22,
-                                    ),
-                                  ),
-                                ),
-
-                                Align(
-                                  alignment: AlignmentDirectional
-                                      .centerEnd,
-                                  child: SizedBox(
-                                    height: 44,
-                                    child: ElevatedButton(
-                                      onPressed: isSaving
-                                          ? null
-                                          : saveMedicalExam,
-                                      style:
-                                      ElevatedButton.styleFrom(
-                                        backgroundColor:
-                                        primaryColor,
-                                        foregroundColor:
-                                        Colors.white,
-                                        elevation: 0,
-                                        padding:
-                                        EdgeInsets.symmetric(
-                                          horizontal:
-                                          isVerySmall ? 14 : 18,
-                                        ),
-                                        shape:
-                                        RoundedRectangleBorder(
-                                          borderRadius:
-                                          BorderRadius.circular(
-                                            12,
-                                          ),
-                                        ),
-                                      ),
-                                      child: isSaving
-                                          ? const SizedBox(
-                                        width: 21,
-                                        height: 21,
-                                        child:
-                                        CircularProgressIndicator(
-                                          strokeWidth: 2.3,
-                                          color: Colors.white,
-                                        ),
-                                      )
-                                          : Text(
-                                        'حفظ',
-                                        style: TextStyle(
-                                          fontSize:
-                                          isVerySmall
-                                              ? 14
-                                              : 16,
-                                          fontWeight:
-                                          FontWeight.bold,
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-
-                          SizedBox(
-                            height: isSmallScreen ? 35 : 45
-                            ,
-                          ),
-
-                          // عنوان بيانات الفحص
-                          Row(
+                    child: Column(
+                      children: [
+                        // Header
+                        SizedBox(
+                          height: 48,
+                          child: Stack(
+                            alignment: Alignment.center,
                             children: [
-                              Icon(
-                                Icons.assignment_turned_in_outlined,
-                                color: primaryColor,
-                                size: 25,
-                              ),
-                              const SizedBox(width: 7),
                               Text(
-                                'بيانات الفحص الطبي',
+                                'تسجيل فحص طبي',
+                                textAlign: TextAlign.center,
                                 style: TextStyle(
-                                  fontSize: 18,
+                                  fontSize: isVerySmall ? 18 : 22,
                                   fontWeight: FontWeight.bold,
                                   color: darkColor,
                                 ),
                               ),
+
+                              Align(
+                                alignment:
+                                AlignmentDirectional.centerStart,
+                                child: IconButton(
+                                  onPressed: () {
+                                    Navigator.pop(context);
+                                  },
+                                  padding: EdgeInsets.zero,
+                                  constraints: const BoxConstraints(
+                                    minWidth: 44,
+                                    minHeight: 44,
+                                  ),
+                                  icon: Icon(
+                                    Icons.arrow_back_ios_new_rounded,
+                                    color: darkColor,
+                                    size: 22,
+                                  ),
+                                ),
+                              ),
+
+                              Align(
+                                alignment:
+                                AlignmentDirectional.centerEnd,
+                                child: SizedBox(
+                                  height: 44,
+                                  child: ElevatedButton(
+                                    onPressed: isPickingAttachment ||
+                                        isSavingAttachment
+                                        ? null
+                                        : saveMedicalExam,
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: primaryColor,
+                                      foregroundColor: Colors.white,
+                                      elevation: 0,
+                                      padding: EdgeInsets.symmetric(
+                                        horizontal: isVerySmall ? 14 : 18,
+                                      ),
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius:
+                                        BorderRadius.circular(12),
+                                      ),
+                                    ),
+                                    child: isSavingAttachment
+                                        ? const SizedBox(
+                                      width: 20,
+                                      height: 20,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                        color: Colors.white,
+                                      ),
+                                    )
+                                        : Text(
+                                      'حفظ',
+                                      style: TextStyle(
+                                        fontSize:
+                                        isVerySmall ? 14 : 16,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
                             ],
                           ),
+                        ),
 
-                          const SizedBox(height: 18),
+                        SizedBox(
+                          height: isSmallScreen ? 35 : 45,
+                        ),
 
-                          // اسم الفحص ونتيجته
-                          _responsivePair(
-                            isVerySmall: isVerySmall,
-                            first: TextFormField(
-                              controller: examNameController,
-                              enabled: !isSaving,
+                        // عنوان بيانات الفحص
+                        Row(
+                          children: [
+                            Icon(
+                              Icons.assignment_turned_in_outlined,
+                              color: primaryColor,
+                              size: 25,
+                            ),
+                            const SizedBox(width: 7),
+                            Text(
+                              'بيانات الفحص الطبي',
                               style: TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
                                 color: darkColor,
-                              ),
-                              textAlign: TextAlign.right,
-                              autovalidateMode:
-                              AutovalidateMode
-                                  .onUserInteraction,
-                              validator: validateExamName,
-                              decoration: examInputDecoration(
-                                label: 'اسم الفحص',
-                                hint: 'مثال: HbA1c',
-                                icon: Icons.science_outlined,
-                                errorText: null,
-                                primaryColor: primaryColor,
-                                borderColor: borderColor,
-                                hintColor: hintColor,
-                              ),
-                            ),
-                            second: TextFormField(
-                              controller: examResultController,
-                              enabled: !isSaving,
-                              style: TextStyle(
-                                color: darkColor,
-                              ),
-                              textAlign: TextAlign.right,
-                              autovalidateMode:
-                              AutovalidateMode
-                                  .onUserInteraction,
-                              validator: validateExamResult,
-                              decoration: examInputDecoration(
-                                label: 'نتيجة الفحص',
-                                hint: 'أدخل النتيجة',
-                                icon: Icons.fact_check_outlined,
-                                errorText: null,
-                                primaryColor: primaryColor,
-                                borderColor: borderColor,
-                                hintColor: hintColor,
-                              ),
-                            ),
-                          ),
-
-                          const SizedBox(height: 16),
-
-                          // وحدة القياس وتاريخ الفحص
-                          _responsivePair(
-                            isVerySmall: isVerySmall,
-                            first: TextFormField(
-                              controller:
-                              measurementUnitController,
-                              enabled: !isSaving,
-                              style: TextStyle(
-                                color: darkColor,
-                              ),
-                              textAlign: TextAlign.right,
-                              autovalidateMode:
-                              AutovalidateMode
-                                  .onUserInteraction,
-                              validator:
-                              validateMeasurementUnit,
-                              decoration: examInputDecoration(
-                                label: 'وحدة القياس (اختياري)',
-                                hint: 'مثال: mg/dL أو %',
-                                icon:
-                                Icons.straighten_outlined,
-                                errorText: null,
-                                primaryColor: primaryColor,
-                                borderColor: borderColor,
-                                hintColor: hintColor,
-                              ),
-                            ),
-                            second: _buildDateField(
-                              primaryColor: primaryColor,
-                              borderColor: borderColor,
-                              hintColor: hintColor,
-                              darkColor: darkColor,
-                            ),
-                          ),
-
-                          const SizedBox(height: 16),
-
-                          // المرفق
-                          GestureDetector(
-                            onTapDown:
-                            isSaving || isPickingAttachment
-                                ? null
-                                : showAttachmentOptions,
-                            child: Container(
-                              width: double.infinity,
-                              padding:
-                              const EdgeInsets.symmetric(
-                                horizontal: 15,
-                                vertical: 15,
-                              ),
-                              decoration: BoxDecoration(
-                                color: cardColor,
-                                borderRadius:
-                                BorderRadius.circular(14),
-                                border: Border.all(
-                                  color:
-                                  selectedAttachmentType ==
-                                      null
-                                      ? borderColor
-                                      : primaryColor,
-                                  width: 1.3,
-                                ),
-                              ),
-                              child: Row(
-                                children: [
-                                  Icon(
-                                    selectedImage != null
-                                        ? Icons.image_outlined
-                                        : selectedFile != null
-                                        ? Icons
-                                        .insert_drive_file_outlined
-                                        : Icons
-                                        .cloud_upload_outlined,
-                                    size: 27,
-                                    color: primaryColor,
-                                  ),
-
-                                  const SizedBox(width: 10),
-
-                                  Expanded(
-                                    child: Column(
-                                      crossAxisAlignment:
-                                      CrossAxisAlignment
-                                          .start,
-                                      children: [
-                                        Text(
-                                          'المرفق',
-                                          style: TextStyle(
-                                            fontSize: 13,
-                                            fontWeight:
-                                            FontWeight.bold,
-                                            color: darkColor,
-                                          ),
-                                        ),
-                                        const SizedBox(height: 3),
-                                        Text(
-                                          isPickingAttachment
-                                              ? 'جارٍ فتح المرفقات...'
-                                              : attachmentText(),
-                                          maxLines: 2,
-                                          overflow:
-                                          TextOverflow.ellipsis,
-                                          style: TextStyle(
-                                            fontSize: 12,
-                                            color: hintColor,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-
-                                  if (isPickingAttachment)
-                                    SizedBox(
-                                      width: 22,
-                                      height: 22,
-                                      child:
-                                      CircularProgressIndicator(
-                                        strokeWidth: 2,
-                                        color: primaryColor,
-                                      ),
-                                    )
-                                  else if (
-                                  selectedAttachmentType !=
-                                      null)
-                                    IconButton(
-                                      onPressed: isSaving
-                                          ? null
-                                          : removeAttachment,
-                                      icon: const Icon(
-                                        Icons.close_rounded,
-                                        color: Color(0xffC85C55),
-                                      ),
-                                    )
-                                  else
-                                    Icon(
-                                      Icons
-                                          .keyboard_arrow_down_rounded,
-                                      color: darkColor,
-                                    ),
-                                ],
-                              ),
-                            ),
-                          ),
-
-                          // معاينة الصورة
-                          if (selectedImage != null) ...[
-                            const SizedBox(height: 12),
-                            Container(
-                              width: double.infinity,
-                              padding: const EdgeInsets.all(10),
-                              decoration: BoxDecoration(
-                                color: cardColor,
-                                borderRadius:
-                                BorderRadius.circular(14),
-                                border: Border.all(
-                                  color: borderColor,
-                                ),
-                              ),
-                              child: ClipRRect(
-                                borderRadius:
-                                BorderRadius.circular(10),
-                                child: Image.file(
-                                  File(selectedImage!.path),
-                                  height: 180,
-                                  fit: BoxFit.contain,
-                                  errorBuilder:
-                                      (context, error, stackTrace) {
-                                    return const SizedBox(
-                                      height: 100,
-                                      child: Center(
-                                        child: Text(
-                                          'تعذر عرض معاينة الصورة',
-                                        ),
-                                      ),
-                                    );
-                                  },
-                                ),
                               ),
                             ),
                           ],
+                        ),
 
-                          // تفاصيل الملف
-                          if (selectedFile != null) ...[
-                            const SizedBox(height: 12),
-                            Container(
-                              width: double.infinity,
-                              padding: const EdgeInsets.all(14),
-                              decoration: BoxDecoration(
-                                color: cardColor,
-                                borderRadius:
-                                BorderRadius.circular(14),
-                                border: Border.all(
-                                  color: borderColor,
-                                ),
-                              ),
-                              child: Row(
-                                children: [
-                                  Icon(
-                                    Icons.description_outlined,
-                                    color: primaryColor,
-                                    size: 30,
-                                  ),
-                                  const SizedBox(width: 10),
-                                  Expanded(
-                                    child: Column(
-                                      crossAxisAlignment:
-                                      CrossAxisAlignment
-                                          .start,
-                                      children: [
-                                        Text(
-                                          selectedFile!.name,
-                                          maxLines: 2,
-                                          overflow:
-                                          TextOverflow.ellipsis,
-                                          style: TextStyle(
-                                            color: darkColor,
-                                            fontWeight:
-                                            FontWeight.w600,
-                                          ),
-                                        ),
-                                        const SizedBox(height: 4),
-                                        Text(
-                                          '${(selectedFile!.size / 1024).toStringAsFixed(1)} KB',
-                                          style: TextStyle(
-                                            color: hintColor,
-                                            fontSize: 12,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ],
+                        const SizedBox(height: 18),
 
-                          const SizedBox(height: 16),
-
-                          // الملاحظات
-                          TextFormField(
-                            controller: notesController,
-                            enabled: !isSaving,
-                            style: TextStyle(
-                              color: darkColor,
-                            ),
-                            textAlign: TextAlign.right,
-                            keyboardType:
-                            TextInputType.multiline,
-                            minLines: 2,
-                            maxLines: 4,
-                            maxLength: 200,
-                            validator: validateNotes,
-                            decoration: examInputDecoration(
-                              label: 'ملاحظات (اختياري)',
-                              hint:
-                              'مثال: الفحص كان صائمًا أو تعليق الطبيب',
-                              icon: Icons.edit_note_rounded,
-                              errorText: null,
-                              primaryColor: primaryColor,
-                              borderColor: borderColor,
-                              hintColor: hintColor,
-                            ).copyWith(
-                              alignLabelWithHint: true,
-                              counterStyle: TextStyle(
-                                color: hintColor,
-                              ),
-                            ),
-                          ),
-
-                          const SizedBox(height: 39),
-
-                          // التنبيه
-                          Container(
+                        // المرفق
+                        GestureDetector(
+                          onTapDown: isPickingAttachment ||
+                              isSavingAttachment
+                              ? null
+                              : showAttachmentOptions,
+                          child: Container(
                             width: double.infinity,
-                            padding:
-                            const EdgeInsets.symmetric(
-                              horizontal: 14,
-                              vertical: 13,
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 15,
+                              vertical: 15,
                             ),
                             decoration: BoxDecoration(
-                              color: isDark
-                                  ? const Color(0xff18272A)
-                                  : const Color(0xffEEF7FA),
-                              borderRadius:
-                              BorderRadius.circular(13),
+                              color: cardColor,
+                              borderRadius: BorderRadius.circular(14),
+                              border: Border.all(
+                                color: showAttachmentError
+                                    ? Colors.red
+                                    : selectedAttachmentType == null
+                                    ? borderColor
+                                    : primaryColor,
+                                width: 1.3,
+                              ),
                             ),
                             child: Row(
-                              mainAxisAlignment:
-                              MainAxisAlignment.center,
                               children: [
                                 Icon(
-                                  Icons.info_outline_rounded,
+                                  selectedImage != null
+                                      ? Icons.image_outlined
+                                      : selectedFile != null
+                                      ? Icons
+                                      .insert_drive_file_outlined
+                                      : Icons.cloud_upload_outlined,
+                                  size: 27,
                                   color: primaryColor,
-                                  size: 20,
                                 ),
-                                const SizedBox(width: 7),
-                                Flexible(
-                                  child: Text(
-                                    'أدخل نتيجة الفحص كما تظهر في التقرير الطبي دون تفسيرها',
-                                    textAlign: TextAlign.center,
-                                    style: TextStyle(
-                                      fontSize: 13,
-                                      color: darkColor,
+
+                                const SizedBox(width: 10),
+
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                    CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        'المرفق',
+                                        style: TextStyle(
+                                          fontSize: 13,
+                                          fontWeight: FontWeight.bold,
+                                          color: darkColor,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 3),
+                                      Text(
+                                        isSavingAttachment
+                                            ? 'جارٍ حفظ المرفق...'
+                                            : isPickingAttachment
+                                            ? 'جارٍ فتح المرفقات...'
+                                            : attachmentText(),
+                                        maxLines: 2,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          color: hintColor,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+
+                                if (isPickingAttachment ||
+                                    isSavingAttachment)
+                                  SizedBox(
+                                    width: 22,
+                                    height: 22,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      color: primaryColor,
                                     ),
+                                  )
+                                else if (hasAttachment)
+                                  IconButton(
+                                    onPressed: removeAttachment,
+                                    icon: const Icon(
+                                      Icons.close_rounded,
+                                      color: Color(0xffC85C55),
+                                    ),
+                                  )
+                                else
+                                  Icon(
+                                    Icons.keyboard_arrow_down_rounded,
+                                    color: darkColor,
+                                  ),
+                              ],
+                            ),
+                          ),
+                        ),
+
+                        if (showAttachmentError) ...[
+                          const SizedBox(height: 7),
+                          Align(
+                            alignment:
+                            AlignmentDirectional.centerStart,
+                            child: Text(
+                              'المرفق مطلوب',
+                              style: TextStyle(
+                                color: theme.colorScheme.error,
+                                fontSize: 12,
+                              ),
+                            ),
+                          ),
+                        ],
+
+                        // معاينة الصورة
+                        if (selectedImage != null) ...[
+                          const SizedBox(height: 12),
+                          Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.all(10),
+                            decoration: BoxDecoration(
+                              color: cardColor,
+                              borderRadius:
+                              BorderRadius.circular(14),
+                              border: Border.all(
+                                color: borderColor,
+                              ),
+                            ),
+                            child: ClipRRect(
+                              borderRadius:
+                              BorderRadius.circular(10),
+                              child: Image.file(
+                                File(selectedImage!.path),
+                                height: 180,
+                                fit: BoxFit.contain,
+                                errorBuilder:
+                                    (context, error, stackTrace) {
+                                  return const SizedBox(
+                                    height: 100,
+                                    child: Center(
+                                      child: Text(
+                                        'تعذر عرض معاينة الصورة',
+                                      ),
+                                    ),
+                                  );
+                                },
+                              ),
+                            ),
+                          ),
+                        ],
+
+                        // تفاصيل الملف
+                        if (selectedFile != null) ...[
+                          const SizedBox(height: 12),
+                          Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.all(14),
+                            decoration: BoxDecoration(
+                              color: cardColor,
+                              borderRadius:
+                              BorderRadius.circular(14),
+                              border: Border.all(
+                                color: borderColor,
+                              ),
+                            ),
+                            child: Row(
+                              children: [
+                                Icon(
+                                  Icons.description_outlined,
+                                  color: primaryColor,
+                                  size: 30,
+                                ),
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                    CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        selectedFile!.name,
+                                        maxLines: 2,
+                                        overflow:
+                                        TextOverflow.ellipsis,
+                                        style: TextStyle(
+                                          color: darkColor,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 4),
+                                      Text(
+                                        '${(selectedFile!.size / 1024).toStringAsFixed(1)} KB',
+                                        style: TextStyle(
+                                          color: hintColor,
+                                          fontSize: 12,
+                                        ),
+                                      ),
+                                    ],
                                   ),
                                 ),
                               ],
                             ),
                           ),
-
-                          const SizedBox(height: 25),
                         ],
-                      ),
+
+                        const SizedBox(height: 50),
+
+                        // التنبيه
+                        Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 14,
+                            vertical: 13,
+                          ),
+                          decoration: BoxDecoration(
+                            color: isDark
+                                ? const Color(0xff18272A)
+                                : const Color(0xffEEF7FA),
+                            borderRadius:
+                            BorderRadius.circular(13),
+                          ),
+                          child: Row(
+                            mainAxisAlignment:
+                            MainAxisAlignment.center,
+                            children: [
+                              Icon(
+                                Icons.info_outline_rounded,
+                                color: primaryColor,
+                                size: 20,
+                              ),
+                              const SizedBox(width: 7),
+                              Flexible(
+                                child: Text(
+                                  'يرجى إرفاق صورة واضحة أو ملف يحتوي على نتائج الفحص الطبي',
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(
+                                    fontSize: 13,
+                                    color: darkColor,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+
+                        const SizedBox(height: 25),
+                      ],
                     ),
                   ),
                 ),
               ),
             );
           },
-        ),
-      ),
-    );
-  }
-
-  Widget _responsivePair({
-    required bool isVerySmall,
-    required Widget first,
-    required Widget second,
-  }) {
-    if (isVerySmall) {
-      return Column(
-        children: [
-          first,
-          const SizedBox(height: 16),
-          second,
-        ],
-      );
-    }
-
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Expanded(child: first),
-        const SizedBox(width: 10),
-        Expanded(child: second),
-      ],
-    );
-  }
-
-  Widget _buildDateField({
-    required Color primaryColor,
-    required Color borderColor,
-    required Color hintColor,
-    required Color darkColor,
-  }) {
-    return InkWell(
-      onTap: isSaving ? null : selectExamDate,
-      borderRadius: BorderRadius.circular(14),
-      child: InputDecorator(
-        decoration: examInputDecoration(
-          label: 'تاريخ الفحص',
-          hint: '',
-          icon: Icons.calendar_month_outlined,
-          errorText: examDateError,
-          primaryColor: primaryColor,
-          borderColor: borderColor,
-          hintColor: hintColor,
-        ),
-        child: Text(
-          examDate == null
-              ? 'اختر تاريخ الفحص'
-              : formatDate(examDate),
-          textAlign: TextAlign.right,
-          style: TextStyle(
-            fontSize: 13,
-            color: examDate == null
-                ? hintColor
-                : darkColor,
-          ),
-        ),
-      ),
-    );
-  }
-
-  InputDecoration examInputDecoration({
-    required String label,
-    required String hint,
-    required IconData icon,
-    required String? errorText,
-    required Color primaryColor,
-    required Color borderColor,
-    required Color hintColor,
-  }) {
-    final ThemeData theme = Theme.of(context);
-
-    final bool isDark =
-        theme.brightness == Brightness.dark;
-
-    final Color textColor =
-        theme.colorScheme.onSurface;
-
-    final Color labelColor = isDark
-        ? textColor.withOpacity(0.70)
-        : const Color(0xff6F8086);
-
-    return InputDecoration(
-      labelText: label,
-      hintText: hint,
-      hintTextDirection: TextDirection.rtl,
-      floatingLabelBehavior: FloatingLabelBehavior.auto,
-      labelStyle: TextStyle(
-        color: labelColor,
-        fontSize: 13,
-      ),
-      floatingLabelStyle: TextStyle(
-        color: primaryColor,
-        fontSize: 12,
-        fontWeight: FontWeight.w600,
-      ),
-      hintStyle: TextStyle(
-        color: hintColor,
-        fontSize: 12,
-      ),
-      errorText: errorText,
-      errorStyle: const TextStyle(
-        fontSize: 10,
-        fontWeight: FontWeight.w500,
-      ),
-      prefixIcon: Icon(
-        icon,
-        color: primaryColor,
-        size: 21,
-      ),
-      filled: true,
-      fillColor: theme.cardColor,
-      contentPadding: const EdgeInsets.symmetric(
-        horizontal: 10,
-        vertical: 17,
-      ),
-      enabledBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(14),
-        borderSide: BorderSide(
-          color: borderColor,
-          width: 1.3,
-        ),
-      ),
-      focusedBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(14),
-        borderSide: BorderSide(
-          color: primaryColor,
-          width: 2,
-        ),
-      ),
-      errorBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(14),
-        borderSide: const BorderSide(
-          color: Colors.red,
-          width: 1.3,
-        ),
-      ),
-      focusedErrorBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(14),
-        borderSide: const BorderSide(
-          color: Colors.red,
-          width: 2,
         ),
       ),
     );

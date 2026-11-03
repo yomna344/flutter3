@@ -5,10 +5,11 @@ class PrivacyScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final Color primaryColor = Theme.of(context).primaryColor;
-    final Color textColor = Theme.of(context).colorScheme.onSurface;
+    final theme = Theme.of(context);
+    final Color primaryColor = theme.primaryColor;
+    final Color textColor = theme.colorScheme.onSurface;
     final Color secondaryTextColor =
-    Theme.of(context).colorScheme.onSurface.withOpacity(0.65);
+    textColor.withOpacity(0.65);
 
     return Scaffold(
       body: SafeArea(
@@ -22,23 +23,24 @@ class PrivacyScreen extends StatelessWidget {
             ),
             child: Center(
               child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 700),
+                constraints: const BoxConstraints(
+                  maxWidth: 700,
+                ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // العنوان وزر الرجوع
+                    // Header
                     Row(
                       children: [
                         IconButton(
-                          onPressed: () => Navigator.pop(context),
+                          onPressed: () =>
+                              Navigator.pop(context),
                           icon: Icon(
                             Icons.arrow_back_ios_new_rounded,
                             color: textColor,
                           ),
                         ),
-
                         const SizedBox(width: 5),
-
                         Expanded(
                           child: Text(
                             'الخصوصية',
@@ -54,7 +56,7 @@ class PrivacyScreen extends StatelessWidget {
 
                     const SizedBox(height: 30),
 
-                    // أيقونة الخصوصية
+                    // Privacy Icon
                     Center(
                       child: Container(
                         width: 105,
@@ -73,7 +75,6 @@ class PrivacyScreen extends StatelessWidget {
 
                     const SizedBox(height: 24),
 
-                    // العنوان الرئيسي
                     Center(
                       child: Text(
                         'خصوصيتك تهمنا',
@@ -89,7 +90,7 @@ class PrivacyScreen extends StatelessWidget {
 
                     Center(
                       child: Text(
-                        'نحرص على حماية بيانات ولي الأمر والبيانات الصحية للطفل.',
+                        'نحرص على توضيح كيفية التعامل مع بيانات ولي الأمر والبيانات الصحية للطفل داخل تطبيق TinyGuide.',
                         textAlign: TextAlign.center,
                         style: TextStyle(
                           fontSize: 14,
@@ -106,8 +107,7 @@ class PrivacyScreen extends StatelessWidget {
                       icon: Icons.lock_outline_rounded,
                       title: 'حماية البيانات',
                       description:
-                      'يتم التعامل مع بيانات الحساب والطفل بشكل آمن، '
-                          'ولا يتم عرضها إلا للمستخدم المصرح له.',
+                      'تُتاح بيانات الحساب والطفل وفق صلاحيات الوصول المعتمدة في النظام، بهدف حماية المعلومات من الوصول غير المصرح به.',
                     ),
 
                     const SizedBox(height: 14),
@@ -117,8 +117,17 @@ class PrivacyScreen extends StatelessWidget {
                       icon: Icons.health_and_safety_outlined,
                       title: 'البيانات الصحية',
                       description:
-                      'تُستخدم بيانات الطفل الصحية لتقديم وظائف المتابعة '
-                          'داخل التطبيق، مثل القراءات والمواعيد والسجلات.',
+                      'تشمل البيانات الصحية قراءات السكر والوجبات والأنشطة والأدوية والفحوصات والمواعيد. وتُستخدم لدعم متابعة الحالة الصحية للطفل.',
+                    ),
+
+                    const SizedBox(height: 14),
+
+                    _privacyCard(
+                      context,
+                      icon: Icons.analytics_outlined,
+                      title: 'استخدام البيانات والتحليل',
+                      description:
+                      'قد تُستخدم البيانات المسجلة لإنشاء التقارير الصحية وتحليل الأنماط وتقديم إرشادات توعوية تساعد ولي الأمر على متابعة صحة الطفل.',
                     ),
 
                     const SizedBox(height: 14),
@@ -126,10 +135,9 @@ class PrivacyScreen extends StatelessWidget {
                     _privacyCard(
                       context,
                       icon: Icons.notifications_none_rounded,
-                      title: 'الإشعارات',
+                      title: 'الإشعارات والتذكيرات',
                       description:
-                      'قد يستخدم التطبيق الإشعارات لتذكير ولي الأمر '
-                          'بالمواعيد والتنبيهات المهمة للطفل.',
+                      'يستخدم التطبيق الإشعارات والتذكيرات لتنبيه ولي الأمر بالمواعيد والتنبيهات التي قام بإعدادها، ويمكن التحكم فيها من إعدادات الجهاز والتطبيق عند توفر ذلك.',
                     ),
 
                     const SizedBox(height: 14),
@@ -139,18 +147,72 @@ class PrivacyScreen extends StatelessWidget {
                       icon: Icons.cloud_outlined,
                       title: 'تخزين البيانات',
                       description:
-                      'عند ربط التطبيق بالخادم سيتم حفظ البيانات وفق '
-                          'إجراءات الحماية والصلاحيات المعتمدة في النظام.',
+                      'تُدار بيانات التطبيق وفق آلية التخزين والصلاحيات المعتمدة في النظام. وسيتم توضيح تفاصيل التخزين والحماية بعد اكتمال ربط الخادم.',
                     ),
 
-                    const SizedBox(height: 30),
+                    const SizedBox(height: 14),
+
+                    _privacyCard(
+                      context,
+                      icon: Icons.share_outlined,
+                      title: 'مشاركة البيانات',
+                      description:
+                      'يمكن لولي الأمر تنزيل التقارير الصحية ومشاركتها مع الطبيب عند الحاجة. ولا يعني إنشاء التقرير إرساله تلقائيًا إلى أي جهة طبية.',
+                    ),
+
+                    const SizedBox(height: 14),
+
+                    _privacyCard(
+                      context,
+                      icon: Icons.manage_accounts_outlined,
+                      title: 'حقوق ولي الأمر',
+                      description:
+                      'يحق لولي الأمر الاطلاع على بيانات الطفل وتحديث المعلومات المسجلة، وطلب حذف الحساب والبيانات وفق الإجراءات والسياسات المعتمدة في النظام.',
+                    ),
+
+                    const SizedBox(height: 25),
+
+                    // Important Note
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(15),
+                      decoration: BoxDecoration(
+                        color: primaryColor.withOpacity(0.08),
+                        borderRadius: BorderRadius.circular(15),
+                      ),
+                      child: Row(
+                        crossAxisAlignment:
+                        CrossAxisAlignment.start,
+                        children: [
+                          Icon(
+                            Icons.info_outline_rounded,
+                            color: primaryColor,
+                            size: 21,
+                          ),
+                          const SizedBox(width: 9),
+                          Expanded(
+                            child: Text(
+                              'تطبيق TinyGuide أداة للمتابعة والتوعية الصحية، ولا يُعد بديلاً عن استشارة الطبيب أو التشخيص الطبي.',
+                              style: TextStyle(
+                                fontSize: 12,
+                                height: 1.7,
+                                color: secondaryTextColor,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+
+                    const SizedBox(height: 20),
 
                     Center(
                       child: Text(
-                        'سيتم تحديث سياسة الخصوصية عند ربط النظام بالخادم.',
+                        'سيتم استكمال وتحديث تفاصيل سياسة الخصوصية عند اكتمال ربط النظام بالخادم.',
                         textAlign: TextAlign.center,
                         style: TextStyle(
                           fontSize: 12,
+                          height: 1.6,
                           color: textColor.withOpacity(0.55),
                         ),
                       ),
@@ -173,18 +235,16 @@ class PrivacyScreen extends StatelessWidget {
         required String title,
         required String description,
       }) {
-    final Color primaryColor = Theme.of(context).primaryColor;
-    final Color textColor = Theme.of(context).colorScheme.onSurface;
+    final theme = Theme.of(context);
+    final Color primaryColor = theme.primaryColor;
+    final Color textColor = theme.colorScheme.onSurface;
 
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(17),
       decoration: BoxDecoration(
-        // يتغير تلقائيًا مع الوضع الداكن
-        color: Theme.of(context).cardColor,
-
+        color: theme.cardColor,
         borderRadius: BorderRadius.circular(17),
-
         border: Border.all(
           color: textColor.withOpacity(0.12),
         ),

@@ -44,15 +44,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
     });
   }
 
-  bool get isDarkMode =>
-      themeNotifier.value == ThemeMode.dark;
+  bool get isDarkMode => themeNotifier.value == ThemeMode.dark;
 
   void openChangePassword() {
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (context) =>
-        const ChangePasswordScreen(),
+        builder: (context) => const ChangePasswordScreen(),
       ),
     );
   }
@@ -61,8 +59,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (context) =>
-        const PrivacyScreen(),
+        builder: (context) => const PrivacyScreen(),
       ),
     );
   }
@@ -71,8 +68,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (context) =>
-        const AboutScreen(),
+        builder: (context) => const AboutScreen(),
       ),
     );
   }
@@ -88,17 +84,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
       body: SafeArea(
         child: LayoutBuilder(
           builder: (context, constraints) {
-            final double width =
-                constraints.maxWidth;
+            final double width = constraints.maxWidth;
 
-            final bool isVerySmall =
-                width < 390;
+            final bool isVerySmall = width < 390;
+            final bool isTablet = width >= 600;
 
-            final bool isTablet =
-                width >= 600;
-
-            final double horizontalPadding =
-            isVerySmall
+            final double horizontalPadding = isVerySmall
                 ? 15
                 : isTablet
                 ? 40
@@ -107,21 +98,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
             return Directionality(
               textDirection: TextDirection.rtl,
               child: SingleChildScrollView(
-                physics:
-                const BouncingScrollPhysics(),
+                physics: const BouncingScrollPhysics(),
                 padding: EdgeInsets.symmetric(
                   horizontal: horizontalPadding,
                   vertical: 18,
                 ),
                 child: Center(
                   child: ConstrainedBox(
-                    constraints:
-                    const BoxConstraints(
+                    constraints: const BoxConstraints(
                       maxWidth: 760,
                     ),
                     child: Column(
-                      crossAxisAlignment:
-                      CrossAxisAlignment.start,
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         _buildHeader(
                           isTablet: isTablet,
@@ -137,15 +125,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         const SizedBox(height: 12),
 
                         _buildSwitchOption(
-                          icon:
-                          Icons.dark_mode_outlined,
+                          icon: Icons.dark_mode_outlined,
                           title: 'الوضع الداكن',
                           subtitle:
                           'تغيير مظهر التطبيق إلى الوضع الداكن',
                           value: isDarkMode,
                           onChanged: (value) {
-                            themeNotifier.value =
-                            value
+                            themeNotifier.value = value
                                 ? ThemeMode.dark
                                 : ThemeMode.light;
 
@@ -163,17 +149,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         const SizedBox(height: 12),
 
                         _buildSwitchOption(
-                          icon: Icons
-                              .notifications_outlined,
+                          icon: Icons.notifications_outlined,
                           title: 'الإشعارات',
                           subtitle:
                           'السماح بتنبيهات ومواعيد الطفل',
-                          value:
-                          notificationsEnabled,
+                          value: notificationsEnabled,
                           onChanged: (value) {
-                            saveNotificationSettings(
-                              value,
-                            );
+                            saveNotificationSettings(value);
                           },
                         ),
 
@@ -187,21 +169,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         const SizedBox(height: 12),
 
                         _buildOption(
-                          icon: Icons
-                              .lock_outline_rounded,
-                          title:
-                          'تغيير كلمة المرور',
-                          subtitle:
-                          'تحديث كلمة مرور الحساب',
-                          onTap:
-                          openChangePassword,
+                          icon: Icons.lock_outline_rounded,
+                          title: 'تغيير كلمة المرور',
+                          subtitle: 'تحديث كلمة مرور الحساب',
+                          onTap: openChangePassword,
                         ),
 
                         const SizedBox(height: 12),
 
                         _buildOption(
-                          icon: Icons
-                              .privacy_tip_outlined,
+                          icon: Icons.privacy_tip_outlined,
                           title: 'الخصوصية',
                           subtitle:
                           'معلومات حماية وخصوصية البيانات',
@@ -218,11 +195,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         const SizedBox(height: 12),
 
                         _buildOption(
-                          icon: Icons
-                              .info_outline_rounded,
+                          icon: Icons.info_outline_rounded,
                           title: 'حول التطبيق',
-                          subtitle:
-                          'معلومات وإصدار التطبيق',
+                          subtitle: 'معلومات وإصدار التطبيق',
                           onTap: openAbout,
                         ),
 
@@ -233,10 +208,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             'الإصدار 1.0.0',
                             style: TextStyle(
                               fontSize: 12,
-                              color: textColor
-                                  .withOpacity(0.50),
-                              fontWeight:
-                              FontWeight.w500,
+                              color: textColor.withOpacity(0.50),
+                              fontWeight: FontWeight.w500,
                             ),
                           ),
                         ),
@@ -266,6 +239,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
     return Row(
       textDirection: TextDirection.rtl,
+      crossAxisAlignment: CrossAxisAlignment.center,
       children: [
         IconButton(
           tooltip: 'رجوع',
@@ -282,34 +256,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
         const SizedBox(width: 5),
 
         Expanded(
-          child: Column(
-            crossAxisAlignment:
-            CrossAxisAlignment.start,
-            children: [
-              Text(
-                'الإعدادات',
-                style: TextStyle(
-                  fontSize:
-                  isTablet ? 31 : 27,
-                  fontWeight:
-                  FontWeight.bold,
-                  color: textColor,
-                ),
-              ),
-
-              const SizedBox(height: 4),
-
-              Text(
-                'إدارة إعدادات التطبيق والحساب',
-                style: TextStyle(
-                  fontSize: 14,
-                  color:
-                  textColor.withOpacity(0.65),
-                  fontWeight:
-                  FontWeight.w500,
-                ),
-              ),
-            ],
+          child: Text(
+            'الإعدادات',
+            style: TextStyle(
+              fontSize: isTablet ? 31 : 27,
+              fontWeight: FontWeight.bold,
+              color: textColor,
+            ),
           ),
         ),
       ],
@@ -334,8 +287,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           height: 20,
           decoration: BoxDecoration(
             color: primaryColor,
-            borderRadius:
-            BorderRadius.circular(10),
+            borderRadius: BorderRadius.circular(10),
           ),
         ),
 
@@ -365,26 +317,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }) {
     final ThemeData theme = Theme.of(context);
 
-    final Color primaryColor =
-        theme.primaryColor;
-
-    final Color textColor =
-        theme.colorScheme.onSurface;
+    final Color primaryColor = theme.primaryColor;
+    final Color textColor = theme.colorScheme.onSurface;
 
     return InkWell(
       onTap: onTap,
-      borderRadius:
-      BorderRadius.circular(17),
+      borderRadius: BorderRadius.circular(17),
       child: Container(
         width: double.infinity,
         padding: const EdgeInsets.all(15),
         decoration: BoxDecoration(
           color: theme.cardColor,
-          borderRadius:
-          BorderRadius.circular(17),
+          borderRadius: BorderRadius.circular(17),
           border: Border.all(
-            color:
-            textColor.withOpacity(0.12),
+            color: textColor.withOpacity(0.12),
           ),
         ),
         child: Row(
@@ -393,10 +339,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
               width: 46,
               height: 46,
               decoration: BoxDecoration(
-                color: primaryColor
-                    .withOpacity(0.10),
-                borderRadius:
-                BorderRadius.circular(13),
+                color: primaryColor.withOpacity(0.10),
+                borderRadius: BorderRadius.circular(13),
               ),
               child: Icon(
                 icon,
@@ -409,15 +353,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
             Expanded(
               child: Column(
-                crossAxisAlignment:
-                CrossAxisAlignment.start,
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
                     title,
                     style: TextStyle(
                       fontSize: 14,
-                      fontWeight:
-                      FontWeight.w600,
+                      fontWeight: FontWeight.w600,
                       color: textColor,
                     ),
                   ),
@@ -428,20 +370,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     subtitle,
                     style: TextStyle(
                       fontSize: 12,
-                      color: textColor
-                          .withOpacity(0.55),
+                      color: textColor.withOpacity(0.55),
                     ),
                   ),
                 ],
               ),
             ),
 
+            // السهم يشير لليسار
             Icon(
-              Icons
-                  .arrow_back_ios_new_rounded,
+              Icons.arrow_forward_ios_rounded,
               size: 16,
-              color:
-              textColor.withOpacity(0.45),
+              color: textColor.withOpacity(0.45),
             ),
           ],
         ),
@@ -462,22 +402,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }) {
     final ThemeData theme = Theme.of(context);
 
-    final Color primaryColor =
-        theme.primaryColor;
-
-    final Color textColor =
-        theme.colorScheme.onSurface;
+    final Color primaryColor = theme.primaryColor;
+    final Color textColor = theme.colorScheme.onSurface;
 
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(15),
       decoration: BoxDecoration(
         color: theme.cardColor,
-        borderRadius:
-        BorderRadius.circular(17),
+        borderRadius: BorderRadius.circular(17),
         border: Border.all(
-          color:
-          textColor.withOpacity(0.12),
+          color: textColor.withOpacity(0.12),
         ),
       ),
       child: Row(
@@ -486,10 +421,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
             width: 48,
             height: 48,
             decoration: BoxDecoration(
-              color: primaryColor
-                  .withOpacity(0.10),
-              borderRadius:
-              BorderRadius.circular(14),
+              color: primaryColor.withOpacity(0.10),
+              borderRadius: BorderRadius.circular(14),
             ),
             child: Icon(
               icon,
@@ -501,15 +434,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
           Expanded(
             child: Column(
-              crossAxisAlignment:
-              CrossAxisAlignment.start,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
                   title,
                   style: TextStyle(
                     fontSize: 14,
-                    fontWeight:
-                    FontWeight.w600,
+                    fontWeight: FontWeight.w600,
                     color: textColor,
                   ),
                 ),
@@ -520,8 +451,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   subtitle,
                   style: TextStyle(
                     fontSize: 12,
-                    color: textColor
-                        .withOpacity(0.55),
+                    color: textColor.withOpacity(0.55),
                   ),
                 ),
               ],
