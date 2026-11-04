@@ -1,4 +1,8 @@
+
 import 'package:flutter/material.dart';
+
+import 'ChildStore.dart';
+import 'services/meal_service.dart';
 
 class MealScreen extends StatefulWidget {
   final String childName;
@@ -23,12 +27,14 @@ class MealScreen extends StatefulWidget {
 }
 
 class _MealEntry {
+  final int mealId;
   final String type;
   final Map<String, List<String>> foods;
   final DateTime dateTime;
   final String? notes;
 
   const _MealEntry({
+    required this.mealId,
     required this.type,
     required this.foods,
     required this.dateTime,
@@ -102,7 +108,7 @@ class _MealScreenState extends State<MealScreen> {
 
   bool _showNotes = false;
   bool _showMeals = false;
-  int? _editingIndex;
+  bool _isSaving = false;
 
   Color _border(ThemeData theme) {
     return theme.brightness == Brightness.dark
@@ -772,22 +778,26 @@ class _MealScreenState extends State<MealScreen> {
       _timeError = null;
 
       _showNotes = false;
-      _editingIndex = null;
     });
   }
 
-  void _save() {
+  // =====================================
+  // حفظ الوجبة في Laravel
+  // =====================================
+
+  Future<void> _save() async {
+    if (_isSaving) return;
+
     FocusScope.of(context).unfocus();
+
+    final chosenFoods = _chosenFoods();
 
     setState(() {
       _typeError = _mealType == null ? 'مطلوب' : null;
-
-      _foodError = _foodNames.isEmpty
+      _foodError = chosenFoods.isEmpty
           ? 'اختاري طعامًا واحدًا على الأقل'
           : null;
-
       _dateError = _mealDate == null ? 'مطلوب' : null;
-
       _timeError = _mealTime == null
           ? 'مطلوب'
           : _isFuture()
@@ -802,131 +812,110 @@ class _MealScreenState extends State<MealScreen> {
       return;
     }
 
+    final int? childId =
+        ChildStore.instance.selectedChild?.id;
+
+    if (childId == null) {
+      _message('يرجى اختيار طفل محفوظ في الحساب أولًا.');
+      return;
+    }
+
     final date = _mealDate!;
     final time = _mealTime!;
     final notes = _notesController.text.trim();
 
-    final entry = _MealEntry(
-      type: _mealType!,
-      foods: _chosenFoods(),
-      dateTime: DateTime(
-        date.year,
-        date.month,
-        date.day,
-        time.hour,
-        time.minute,
-      ),
-      notes: notes.isEmpty ? null : notes,
+    final dateTime = DateTime(
+      date.year,
+      date.month,
+      date.day,
+      time.hour,
+      time.minute,
     );
 
-    // إذا فتحت الشاشة من قراءة السكر،
-    // نرجع بيانات الوجبة للشاشة السابقة.
-    if (widget.returnMealOnSave) {
-      Navigator.pop(context, {
-        'meal_type': entry.type,
-        'foods': entry.foods,
-        'meal_date': _formatApiDate(entry.dateTime),
-        'meal_time': _formatApiTime(entry.dateTime),
-        'notes': entry.notes,
-      });
-      return;
-    }
-
-    // الحفظ المؤقت عند فتح شاشة الوجبات بشكل مستقل.
     setState(() {
-      if (_editingIndex == null) {
-        _sessionMeals.insert(0, entry);
-      } else {
-        _sessionMeals[_editingIndex!] = entry;
-      }
+      _isSaving = true;
     });
 
-    _resetForm();
+    try {
+      final response = await MealService.saveMeal(
+        childId: childId,
+        mealType: _mealType!,
+        ingredients: chosenFoods,
+        mealDate: _formatApiDate(dateTime),
+        mealTime: _formatApiTime(dateTime),
+        notes: notes.isEmpty ? null : notes,
+      );
 
-    _message(
-      'تم تسجيل الوجبة مؤقتًا في هذه الصفحة. '
-          'الحفظ الدائم سيتاح بعد ربط Laravel.',
-    );
+      final idValue = response['meal_id'];
+
+      final int? mealId = idValue is int
+          ? idValue
+          : int.tryParse(idValue?.toString() ?? '');
+
+      if (mealId == null || mealId <= 0) {
+        throw Exception(
+          'تعذر الحصول على رقم الوجبة المحفوظة.',
+        );
+      }
+
+      if (!mounted) return;
+
+      final entry = _MealEntry(
+        mealId: mealId,
+        type: _mealType!,
+        foods: chosenFoods,
+        dateTime: dateTime,
+        notes: notes.isEmpty ? null : notes,
+      );
+
+      // إرجاع الوجبة إلى شاشة السكر بعد نجاح الحفظ
+      if (widget.returnMealOnSave) {
+        Navigator.pop(context, {
+          'meal_id': entry.mealId,
+          'meal_type': entry.type,
+          'foods': entry.foods,
+          'meal_date': _formatApiDate(entry.dateTime),
+          'meal_time': _formatApiTime(entry.dateTime),
+          'notes': entry.notes,
+        });
+        return;
+      }
+
+      // قائمة الوجبات المحفوظة خلال فتح الصفحة
+      setState(() {
+        _sessionMeals.insert(0, entry);
+      });
+
+      _resetForm();
+      _message('تم حفظ الوجبة بنجاح.');
+    } catch (error) {
+      if (!mounted) return;
+
+      _message(
+        error.toString().replaceFirst('Exception: ', ''),
+      );
+    } finally {
+      if (mounted && _isSaving) {
+        setState(() {
+          _isSaving = false;
+        });
+      }
+    }
   }
+
+  // التعديل والحذف يحتاجان مسارات API مستقلة.
+  // لا نغيّر القائمة محليًا ونوهم المستخدم أن MySQL تغيّرت.
 
   void _edit(int index) {
-    final entry = _sessionMeals[index];
-    _notesController.text = entry.notes ?? '';
-
-    setState(() {
-      _editingIndex = index;
-      _mealType = entry.type;
-      _mealDate = _dateOnly(entry.dateTime);
-      _mealTime = TimeOfDay.fromDateTime(entry.dateTime);
-
-      _selectedFoods.clear();
-      _customFoods.clear();
-
-      for (final item in entry.foods.entries) {
-        final predefined = foodGroups[item.key] ?? <String>[];
-
-        _selectedFoods[item.key] = item.value
-            .where(predefined.contains)
-            .toSet();
-
-        _customFoods[item.key] = item.value
-            .where((food) => !predefined.contains(food))
-            .toList();
-      }
-
-      _showNotes = entry.notes != null;
-      _showMeals = false;
-
-      _typeError = null;
-      _foodError = null;
-      _dateError = null;
-      _timeError = null;
-    });
+    _message(
+      'تعديل الوجبة في MySQL سيتاح بعد ربط التحديث مع Laravel.',
+    );
   }
 
-  Future<void> _delete(int index) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (dialogContext) {
-        return Directionality(
-          textDirection: TextDirection.rtl,
-          child: AlertDialog(
-            title: const Text('حذف الوجبة؟'),
-            content: const Text(
-              'سيتم حذفها من القائمة المؤقتة.',
-            ),
-            actions: [
-              TextButton(
-                onPressed: () =>
-                    Navigator.pop(dialogContext, false),
-                child: const Text('إلغاء'),
-              ),
-              TextButton(
-                onPressed: () =>
-                    Navigator.pop(dialogContext, true),
-                child: const Text('حذف'),
-              ),
-            ],
-          ),
-        );
-      },
+  void _delete(int index) {
+    _message(
+      'حذف الوجبة من MySQL سيتاح بعد ربط الحذف مع Laravel.',
     );
-
-    if (!mounted || confirmed != true) return;
-
-    final wasEditing = _editingIndex == index;
-
-    setState(() {
-      _sessionMeals.removeAt(index);
-
-      if (_editingIndex != null && _editingIndex! > index) {
-        _editingIndex = _editingIndex! - 1;
-      }
-    });
-
-    if (wasEditing) {
-      _resetForm();
-    }
   }
 
   InputDecoration _decoration(
@@ -1120,9 +1109,7 @@ class _MealScreenState extends State<MealScreen> {
                             alignment: Alignment.center,
                             children: [
                               Text(
-                                _editingIndex == null
-                                    ? 'تسجيل وجبة'
-                                    : 'تعديل وجبة',
+                                'تسجيل وجبة',
                                 style: TextStyle(
                                   fontSize: verySmall ? 18 : 22,
                                   fontWeight: FontWeight.bold,
@@ -1133,8 +1120,9 @@ class _MealScreenState extends State<MealScreen> {
                                 alignment:
                                 AlignmentDirectional.centerStart,
                                 child: IconButton(
-                                  onPressed: () =>
-                                      Navigator.pop(context),
+                                  onPressed: _isSaving
+                                      ? null
+                                      : () => Navigator.pop(context),
                                   icon: Icon(
                                     Icons.arrow_back_ios_new_rounded,
                                     color: dark,
@@ -1145,7 +1133,8 @@ class _MealScreenState extends State<MealScreen> {
                                 alignment:
                                 AlignmentDirectional.centerEnd,
                                 child: ElevatedButton(
-                                  onPressed: _save,
+                                  onPressed:
+                                  _isSaving ? null : _save,
                                   style: ElevatedButton.styleFrom(
                                     backgroundColor: primary,
                                     foregroundColor: Colors.white,
@@ -1155,11 +1144,17 @@ class _MealScreenState extends State<MealScreen> {
                                       BorderRadius.circular(12),
                                     ),
                                   ),
-                                  child: Text(
-                                    _editingIndex == null
-                                        ? 'حفظ'
-                                        : 'تحديث',
-                                  ),
+                                  child: _isSaving
+                                      ? const SizedBox(
+                                    width: 20,
+                                    height: 20,
+                                    child:
+                                    CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      color: Colors.white,
+                                    ),
+                                  )
+                                      : const Text('حفظ'),
                                 ),
                               ),
                             ],
@@ -1175,9 +1170,7 @@ class _MealScreenState extends State<MealScreen> {
                             ),
                             const SizedBox(width: 7),
                             Text(
-                              _editingIndex == null
-                                  ? 'إضافة وجبة جديدة'
-                                  : 'تعديل الوجبة',
+                              'إضافة وجبة جديدة',
                               style: TextStyle(
                                 fontSize: 17,
                                 fontWeight: FontWeight.bold,
@@ -1314,20 +1307,12 @@ class _MealScreenState extends State<MealScreen> {
                             ),
                           ),
                         ),
-                        if (_editingIndex != null)
-                          Padding(
-                            padding: const EdgeInsets.only(top: 8),
-                            child: TextButton(
-                              onPressed: _resetForm,
-                              child: const Text('إلغاء التعديل'),
-                            ),
-                          ),
                         const SizedBox(height: 18),
                         _foldable(
                           title: 'الوجبات المسجلة',
                           icon: Icons.restaurant_menu_rounded,
                           subtitle:
-                          '(${_sessionMeals.length}) — مؤقت حتى ربط Laravel',
+                          '(${_sessionMeals.length}) — المحفوظة خلال فتح الصفحة',
                           expanded: _showMeals,
                           onTap: () {
                             setState(() {
@@ -1345,7 +1330,7 @@ class _MealScreenState extends State<MealScreen> {
                                 const Padding(
                                   padding: EdgeInsets.all(16),
                                   child: Text(
-                                    'لا توجد وجبات مسجلة مؤقتًا',
+                                    'لا توجد وجبات محفوظة خلال فتح الصفحة بعد',
                                   ),
                                 ),
                               ...List.generate(

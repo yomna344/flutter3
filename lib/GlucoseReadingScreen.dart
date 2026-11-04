@@ -1,8 +1,11 @@
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import 'validators.dart';
 import 'MealScreen.dart';
+import 'ChildStore.dart';
+import 'services/glucose_reading_service.dart';
 
 class GlucoseReadingScreen extends StatefulWidget {
   final String childName;
@@ -33,7 +36,7 @@ class _GlucoseReadingScreenState
   String? selectedReadingType;
   String? selectedMealStatus;
 
-  // بيانات الوجبة التي تم تسجيلها من شاشة الوجبات.
+  // بيانات الوجبة القادمة من شاشة الوجبات
   Map<String, dynamic>? selectedMealData;
 
   DateTime? readingDate;
@@ -130,7 +133,10 @@ class _GlucoseReadingScreenState
     return selectedDateTime.isAfter(now);
   }
 
-  // فتح شاشة تسجيل الوجبة واستقبال بياناتها.
+  // =====================================
+  // فتح شاشة تسجيل الوجبة
+  // =====================================
+
   Future<void> openMealScreen() async {
     if (isSaving) return;
 
@@ -163,13 +169,17 @@ class _GlucoseReadingScreenState
       ..showSnackBar(
         const SnackBar(
           content: Text(
-            'تم تسجيل الوجبة بنجاح. يمكنك الآن حفظ قراءة السكر.',
+            'تم حفظ الوجبة في Laravel بنجاح. يمكنك الآن حفظ قراءة السكر.',
             textAlign: TextAlign.center,
           ),
           behavior: SnackBarBehavior.floating,
         ),
       );
   }
+
+  // =====================================
+  // اختيار تاريخ القراءة
+  // =====================================
 
   Future<void> selectReadingDate() async {
     final today = dateOnly(DateTime.now());
@@ -222,6 +232,10 @@ class _GlucoseReadingScreenState
     });
   }
 
+  // =====================================
+  // اختيار وقت القراءة
+  // =====================================
+
   Future<void> selectReadingTime() async {
     final selectedTime = await showTimePicker(
       context: context,
@@ -244,7 +258,10 @@ class _GlucoseReadingScreenState
     });
   }
 
-  // التحقق من جميع البيانات قبل الحفظ.
+  // =====================================
+  // التحقق من بيانات قراءة السكر
+  // =====================================
+
   bool validateInformation() {
     final formIsValid =
         formKey.currentState?.validate() ?? false;
@@ -269,8 +286,6 @@ class _GlucoseReadingScreenState
           ? 'مطلوب'
           : null;
 
-      // منع الحفظ إذا اختارت الوجبة غير مسجلة
-      // ولم تسجل وجبة جديدة.
       mealEntryError =
       needsMealStatus &&
           isMealNotRegistered &&
@@ -287,6 +302,10 @@ class _GlucoseReadingScreenState
         mealEntryError == null;
   }
 
+  // =====================================
+  // حفظ قراءة السكر في Laravel
+  // =====================================
+
   Future<void> saveReading() async {
     if (isSaving) return;
 
@@ -294,73 +313,137 @@ class _GlucoseReadingScreenState
 
     if (!validateInformation()) return;
 
+    // الرقم الحقيقي للطفل في MySQL
+    final int? childId =
+        ChildStore.instance.selectedChild?.id;
+
+    if (childId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'يرجى اختيار طفل محفوظ في الحساب أولًا.',
+            textAlign: TextAlign.center,
+          ),
+        ),
+      );
+      return;
+    }
+
+    // لا نحفظ وجبة جديدة قبل ربط الوجبات مع Laravel
+    // رقم الوجبة المحفوظة فعليًا في MySQL
+    final dynamic mealIdValue = selectedMealData?['meal_id'];
+
+    final int? savedMealId = mealIdValue is int
+        ? mealIdValue
+        : int.tryParse(mealIdValue?.toString() ?? '');
+
+// التأكد من حفظ الوجبة الجديدة قبل ربط قراءة السكر بها
+    if (needsMealStatus &&
+        isMealNotRegistered &&
+        (savedMealId == null || savedMealId <= 0)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'يجب حفظ الوجبة في Laravel أولًا قبل تسجيل قراءة السكر.',
+            textAlign: TextAlign.center,
+          ),
+        ),
+      );
+      return;
+    }
+
+    final double? glucoseLevel = double.tryParse(
+      glucoseLevelController.text.trim(),
+    );
+
+    if (glucoseLevel == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'يرجى إدخال مستوى سكر صحيح.',
+            textAlign: TextAlign.center,
+          ),
+        ),
+      );
+      return;
+    }
+
     setState(() {
       isSaving = true;
     });
 
-    final glucoseLevel = double.parse(
-      glucoseLevelController.text.trim(),
-    );
+    try {
+      // إرسال القراءة إلى Laravel
+      await GlucoseReadingService.saveReading(
+        childId: childId,
+        readingType: selectedReadingType!,
+        glucoseLevel: glucoseLevel,
+        readingDate: formatApiDate(readingDate!),
+        readingTime: formatApiTime(readingTime!),
+        mealStatus: needsMealStatus
+            ? selectedMealStatus
+            : null,
+        mealId: needsMealStatus && isMealNotRegistered
+            ? savedMealId
+            : null,
 
-    final readingData = <String, dynamic>{
-      'reading_type': selectedReadingType,
-      'glucose_level': glucoseLevel,
-      'unit': 'mg/dL',
-      'reading_date': formatApiDate(readingDate!),
-      'reading_time': formatApiTime(readingTime!),
-
-      'meal_status': needsMealStatus
-          ? selectedMealStatus
-          : null,
-
-      // إذا كانت الوجبة غير مسجلة،
-      // نرسل بيانات الوجبة الجديدة.
-      'meal_data': needsMealStatus && isMealNotRegistered
-          ? selectedMealData
-          : null,
-    };
-
-    /*
-      الربط المستقبلي مع Laravel:
-
-      1- إذا كانت الوجبة مسجلة:
-         يتم التعامل معها كوجبة موجودة،
-         ولا نطلب تسجيلها مرة أخرى.
-
-      2- إذا كانت الوجبة غير مسجلة:
-         يجب تسجيل الوجبة أولًا.
-         ثم تُرسل بياناتها مع قراءة السكر.
-
-      3- لا يتم إنشاء وجبة وهمية.
-
-      الحفظ الحالي تجريبي وليس حفظًا دائمًا.
-    */
-
-    debugPrint('Glucose reading preview: $readingData');
-
-    await Future.delayed(
-      const Duration(milliseconds: 500),
-    );
-
-    if (!mounted) return;
-
-    setState(() {
-      isSaving = false;
-    });
-
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(
-        const SnackBar(
-          content: Text(
-            'تم التحقق من بيانات القراءة. '
-                'الحفظ الفعلي سيتاح بعد ربط Laravel.',
-            textAlign: TextAlign.center,
-          ),
-          behavior: SnackBarBehavior.floating,
-          duration: Duration(seconds: 3),
-        ),
       );
+
+      if (!mounted) return;
+
+      // تفريغ الحقول بعد نجاح الحفظ الحقيقي
+      setState(() {
+        glucoseLevelController.clear();
+
+        selectedReadingType = null;
+        selectedMealStatus = null;
+        selectedMealData = null;
+
+        readingDate = null;
+        readingTime = null;
+
+        readingTypeError = null;
+        readingDateError = null;
+        readingTimeError = null;
+        mealStatusError = null;
+        mealEntryError = null;
+      });
+
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          const SnackBar(
+            content: Text(
+              'تم حفظ قراءة السكر بنجاح.',
+              textAlign: TextAlign.center,
+            ),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+    } catch (error) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          SnackBar(
+            content: Text(
+              error
+                  .toString()
+                  .replaceFirst('Exception: ', ''),
+              textAlign: TextAlign.center,
+            ),
+            behavior: SnackBarBehavior.floating,
+            duration: const Duration(seconds: 4),
+          ),
+        );
+    } finally {
+      if (mounted) {
+        setState(() {
+          isSaving = false;
+        });
+      }
+    }
   }
 
   @override
@@ -368,6 +451,10 @@ class _GlucoseReadingScreenState
     glucoseLevelController.dispose();
     super.dispose();
   }
+
+  // =====================================
+  // واجهة تسجيل قراءة السكر
+  // =====================================
 
   @override
   Widget build(BuildContext context) {
@@ -419,7 +506,7 @@ class _GlucoseReadingScreenState
                         crossAxisAlignment:
                         CrossAxisAlignment.stretch,
                         children: [
-                          // العنوان وزر الحفظ.
+                          // العنوان وزر الحفظ
                           SizedBox(
                             height: 48,
                             child: Stack(
@@ -523,7 +610,7 @@ class _GlucoseReadingScreenState
                             height: isSmallScreen ? 30 : 40,
                           ),
 
-                          // صندوق النصائح.
+                          // صندوق النصائح
                           Container(
                             width: double.infinity,
                             padding: const EdgeInsets.symmetric(
@@ -615,7 +702,7 @@ class _GlucoseReadingScreenState
 
                           const SizedBox(height: 22),
 
-                          // مستوى السكر والتاريخ.
+                          // مستوى السكر والتاريخ
                           if (isVerySmall)
                             Column(
                               children: [
@@ -666,7 +753,7 @@ class _GlucoseReadingScreenState
                             cardColor: cardColor,
                           ),
 
-                          // قسم الوجبة يظهر بعد الوجبة فقط.
+                          // قسم الوجبة يظهر بعد الوجبة فقط
                           if (needsMealStatus) ...[
                             const SizedBox(height: 22),
                             _buildMealStatusField(
@@ -698,6 +785,10 @@ class _GlucoseReadingScreenState
       ),
     );
   }
+
+  // =====================================
+  // حقل نوع القراءة
+  // =====================================
 
   Widget _buildReadingTypeField({
     required Color primaryColor,
@@ -780,6 +871,10 @@ class _GlucoseReadingScreenState
     );
   }
 
+  // =====================================
+  // حقل مستوى السكر
+  // =====================================
+
   Widget _buildGlucoseField({
     required Color primaryColor,
     required Color cardColor,
@@ -817,6 +912,10 @@ class _GlucoseReadingScreenState
       ],
     );
   }
+
+  // =====================================
+  // حقل تاريخ القراءة
+  // =====================================
 
   Widget _buildDateField({
     required Color primaryColor,
@@ -868,6 +967,10 @@ class _GlucoseReadingScreenState
     );
   }
 
+  // =====================================
+  // حقل وقت القراءة
+  // =====================================
+
   Widget _buildTimeField({
     required Color primaryColor,
     required Color hintColor,
@@ -917,6 +1020,10 @@ class _GlucoseReadingScreenState
       ],
     );
   }
+
+  // =====================================
+  // حقل حالة تسجيل الوجبة
+  // =====================================
 
   Widget _buildMealStatusField({
     required Color primaryColor,
@@ -1010,12 +1117,16 @@ class _GlucoseReadingScreenState
     );
   }
 
+  // =====================================
+  // معلومات الوجبة
+  // =====================================
+
   Widget _buildMealInformation({
     required Color primaryColor,
     required Color textColor,
     required bool isRegistered,
   }) {
-    // الوجبة مسجلة: لا نعرض زر تسجيل مرة أخرى.
+    // الوجبة مسجلة: لا نعرض زر تسجيل مرة أخرى
     if (isRegistered) {
       return Container(
         width: double.infinity,
@@ -1047,7 +1158,7 @@ class _GlucoseReadingScreenState
       );
     }
 
-    // الوجبة غير مسجلة: نطلب تسجيلها أولًا.
+    // الوجبة غير مسجلة: نطلب تسجيلها أولًا
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(13),
@@ -1061,7 +1172,6 @@ class _GlucoseReadingScreenState
       child: Column(
         children: [
           if (selectedMealData == null) ...[
-
             const SizedBox(height: 12),
             SizedBox(
               width: double.infinity,
@@ -1092,7 +1202,7 @@ class _GlucoseReadingScreenState
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
-                    'تم تسجيل الوجبة',
+                    'تم إدخال بيانات الوجبة',
                     style: TextStyle(
                       color: textColor,
                       fontWeight: FontWeight.bold,
